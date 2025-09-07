@@ -2,5 +2,4 @@
     "rust-analyzer.cargo.extraArgs": [
         "--target", "riscv64gc-unknown-none-elf"
     ],
-    "rust-analyzer.checkOnSave.allTargets": false,
 }
