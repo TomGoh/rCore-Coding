@@ -1,11 +1,61 @@
 use crate::{ println, sync::UPSafeCell };
 use lazy_static::*;
 use crate::sbi::*;
+use crate::trap::TrapContext;
 use core::arch::asm;
 
 const MAX_APP_NUM: usize = 16;
 const APP_BASE_ADDRESS: usize = 0x8040_0000;
 const APP_SIZE_LIMIT: usize = 0x0020_0000; // 2MB
+
+const USER_STACK_SIZE: usize = 4096 * 2; // 8KB
+const KERNEL_STACK_SIZE: usize = 4096 * 2; // 8KB
+
+/// 每个应用程序的内核栈
+/// 该栈在内存中对齐到 4096 字节边界
+/// 大小为 KERNEL_STACK_SIZE 字节
+#[repr(align(4096))]
+struct KernelStack {
+    data: [u8; KERNEL_STACK_SIZE],
+}
+
+/// 每个应用程序的用户栈
+/// 该栈在内存中对齐到 4096 字节边界
+/// 大小为 USER_STACK_SIZE 字节
+#[repr(align(4096))]
+struct UserStack {
+    data: [u8; USER_STACK_SIZE],
+}
+
+impl UserStack {
+    fn get_sp(&self) -> usize {
+        self.data.as_ptr() as usize + USER_STACK_SIZE
+    }
+}
+
+static KERNEL_STACK: KernelStack = KernelStack {
+    data: [0; KERNEL_STACK_SIZE],
+};
+
+static USER_STACK: UserStack = UserStack {
+    data: [0; USER_STACK_SIZE],
+};
+
+impl KernelStack {
+    fn get_sp(&self) -> usize {
+        self.data.as_ptr() as usize + KERNEL_STACK_SIZE
+    }
+
+    pub fn push_context(&self, context: TrapContext) -> &'static mut TrapContext {
+        let cx_ptr = (self.get_sp() - core::mem::size_of::<TrapContext>()) as *mut TrapContext;
+        unsafe {
+            *cx_ptr = context;
+        }
+        unsafe {
+            cx_ptr.as_mut().unwrap()
+        }
+    }
+}
 
 /// 管理应用程序的结构体
 /// 包含应用程序的数量、当前运行的应用程序索引
@@ -115,4 +165,23 @@ lazy_static! {
             }
         })
     };
+}
+
+pub fn run_next_app() -> ! {
+    let mut app_manager = APP_MANAGER.exclusive_access();
+    let current_app_index = app_manager.get_current_app();
+    app_manager.load_app(current_app_index);
+    app_manager.move_to_next_app();
+    drop(app_manager);
+
+    unsafe extern "C" {
+        unsafe fn __restore(cx_addr: usize);
+    }
+    unsafe {
+        __restore(KERNEL_STACK.push_context(TrapContext::app_init_context(
+            APP_BASE_ADDRESS,
+            USER_STACK.get_sp(),
+        )) as *const _ as usize);
+    }
+    unreachable!();
 }

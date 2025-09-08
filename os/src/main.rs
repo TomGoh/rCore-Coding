@@ -8,6 +8,8 @@ mod sbi;
 mod logging;
 pub mod batch;
 mod sync;
+pub mod trap;
+mod syscall;
 
 use core::arch::global_asm;
 use log::{trace, debug, info, warn, error};
