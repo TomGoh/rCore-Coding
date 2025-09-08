@@ -6,6 +6,6 @@ build-std = ["core", "alloc"]
 
 [target.riscv64gc-unknown-none-elf]
 rustflags = [
-    "-Clink-arg=-Tsrc/linker.ld", 
+    "-Clink-arg=-Tsrc/linker-qemu.ld", 
     "-Cforce-frame-pointers=yes"
 ]

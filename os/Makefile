@@ -1,52 +1,84 @@
-# RISC-V Kernel Build Configuration
+# Building
 TARGET := riscv64gc-unknown-none-elf
-MODE := debug
+MODE := release
 KERNEL_ELF := target/$(TARGET)/$(MODE)/os
-KERNEL_BIN := target/$(TARGET)/$(MODE)/os.bin
+KERNEL_BIN := $(KERNEL_ELF).bin
+DISASM_TMP := target/$(TARGET)/$(MODE)/asm
 
-# Build the kernel ELF and create binary
-build: $(KERNEL_BIN)
+# Building mode argument
+ifeq ($(MODE), release)
+	MODE_ARG := --release
+endif
 
-# Build the ELF file
-$(KERNEL_ELF):
-	@echo "🔨 Building kernel ELF..."
-	@cargo build
-	@echo "✅ Kernel ELF built successfully"
+# BOARD
+BOARD := qemu
+SBI ?= rustsbi
+BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
 
-# Create binary from ELF
-$(KERNEL_BIN): $(KERNEL_ELF)
-	@echo "📦 Creating binary file..."
-	@rust-objcopy --strip-all $(KERNEL_ELF) -O binary $(KERNEL_BIN)
-	@echo "✅ Binary created: $(KERNEL_BIN)"
+# KERNEL ENTRY
+KERNEL_ENTRY_PA := 0x80200000
 
-# Release build
-release:
-	@echo "🚀 Building release kernel..."
-	@cargo build --release
-	@rust-objcopy --strip-all target/$(TARGET)/release/os -O binary target/$(TARGET)/release/os.bin
-	@echo "✅ Release binary created: target/$(TARGET)/release/os.bin"
+# Binutils
+OBJDUMP := rust-objdump --arch-name=riscv64
+OBJCOPY := rust-objcopy --binary-architecture=riscv64
 
-# Clean build artifacts
+# Disassembly
+DISASM ?= -x
+
+build: env $(KERNEL_BIN)
+
+env:
+	(rustup target list | grep "riscv64gc-unknown-none-elf (installed)") || rustup target add $(TARGET)
+	cargo install cargo-binutils
+	rustup component add rust-src
+	rustup component add llvm-tools-preview
+
+$(KERNEL_BIN): kernel
+	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
+
+kernel:
+	@cd ../user && make build
+	@echo Platform: $(BOARD)
+	@cp src/linker-$(BOARD).ld src/linker.ld
+	@cargo build $(MODE_ARG)
+	@rm src/linker.ld
+
+
 clean:
-	@echo "🧹 Cleaning build artifacts..."
 	@cargo clean
-	@echo "✅ Clean complete"
 
-# Run (for future use with emulator)
-run: build
-	@echo "🎯 Binary ready for deployment: $(KERNEL_BIN)"
+disasm: kernel
+	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less
 
-# Debug with GDB
-debug: build
-	@echo "🐛 Starting QEMU with GDB server (waiting for GDB connection)..."
-	@echo "📡 In another terminal, run:"
-	@echo "   riscv64-elf-gdb $(KERNEL_ELF) -ex 'target remote :1234'"
-	@echo "🔧 Press Ctrl+C to stop QEMU"
-	@qemu-system-riscv64 \
-		-machine virt \
-		-nographic \
-		-bios ../bootloader/rustsbi-qemu.bin \
-		-device loader,file=$(KERNEL_BIN),addr=0x80200000 \
-		-s -S
+disasm-vim: kernel
+	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) > $(DISASM_TMP)
+	@vim $(DISASM_TMP)
+	@rm $(DISASM_TMP)
 
-.PHONY: build release clean run debug
+run: run-inner
+
+QEMU_ARGS := -machine virt \
+			 -nographic \
+			 -bios $(BOOTLOADER) \
+			 -device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+
+QEMU_NAME := qemu-system-riscv64
+qemu-version-check:
+	@sh scripts/qemu-ver-check.sh $(QEMU_NAME)
+
+run-inner: qemu-version-check build
+	@qemu-system-riscv64 $(QEMU_ARGS)
+
+debug: qemu-version-check build
+	@tmux new-session -d \
+		"qemu-system-riscv64 $(QEMU_ARGS) -s -S" && \
+		tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && \
+		tmux -2 attach-session -d
+
+gdbserver: qemu-version-check build
+	@qemu-system-riscv64 $(QEMU_ARGS) -s -S
+
+gdbclient:
+	@riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
+
+.PHONY: build env kernel clean disasm disasm-vim run-inner gdbserver gdbclient qemu-version-check

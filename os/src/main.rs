@@ -6,10 +6,13 @@ mod lang_items;
 mod console;
 mod sbi;
 mod logging;
+pub mod batch;
+mod sync;
 
 use core::arch::global_asm;
 use log::{trace, debug, info, warn, error};
 global_asm!(include_str!("entry.asm"));
+global_asm!(include_str!("link_app.S"));
 
 pub fn clear_bss()  {
     unsafe extern "C" {
