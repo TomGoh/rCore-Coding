@@ -167,6 +167,15 @@ lazy_static! {
     };
 }
 
+pub fn init() {
+    print_app_info();
+}
+
+pub fn print_app_info() {
+    let app_manager = APP_MANAGER.exclusive_access();
+    app_manager.print_app_info();
+}
+
 pub fn run_next_app() -> ! {
     let mut app_manager = APP_MANAGER.exclusive_access();
     let current_app_index = app_manager.get_current_app();
