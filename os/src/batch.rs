@@ -46,6 +46,14 @@ impl KernelStack {
         self.data.as_ptr() as usize + KERNEL_STACK_SIZE
     }
 
+    /// 将一个 TrapContext 压入内核栈
+    /// 参数:
+    /// - context: 需要压入的 TrapContext 实例
+    /// 返回值:
+    /// - 返回一个指向压入的 TrapContext 的静态可变引用
+    /// 注意:
+    /// - 该函数假设内核栈有足够的空间来存放新的 TrapContext
+    /// - 该函数使用了 unsafe 代码块，因为直接操作内存指针
     pub fn push_context(&self, context: TrapContext) -> &'static mut TrapContext {
         let cx_ptr = (self.get_sp() - core::mem::size_of::<TrapContext>()) as *mut TrapContext;
         unsafe {
@@ -167,6 +175,11 @@ lazy_static! {
     };
 }
 
+/// 批处理系统的初始化函数
+/// 该函数打印应用程序的信息
+/// 注意:
+/// - 该函数必须在内核初始化阶段调用一次
+/// - 该函数使用了 UPSafeCell 来确保对 APP_MANAGER 的独占访问
 pub fn init() {
     print_app_info();
 }
@@ -176,6 +189,15 @@ pub fn print_app_info() {
     app_manager.print_app_info();
 }
 
+/// 切换并运行下一个应用程序
+/// 该函数首先获取对 APP_MANAGER 的独占访问
+/// 然后加载当前应用程序并切换到下一个应用程序对应的用户内存空间
+/// 最后通过陷入返回指令跳转到用户态运行应用程序
+/// 注意:
+/// - 该函数不会返回，调用后会切换到用户态运行应用程序
+/// - 该函数假设当前有下一个应用程序可运行，当没有下一个应用程序运行时 `load_app` 会关机
+/// - 该函数使用了 UPSafeCell 来确保对 APP_MANAGER 的独占访问
+/// - 该函数使用了 unsafe 代码块，因为直接操作硬件寄存器
 pub fn run_next_app() -> ! {
     let mut app_manager = APP_MANAGER.exclusive_access();
     let current_app_index = app_manager.get_current_app();
@@ -187,6 +209,10 @@ pub fn run_next_app() -> ! {
         unsafe fn __restore(cx_addr: usize);
     }
     unsafe {
+        // 调用汇编函数 __restore
+        // 切换到下一个应用程序对应的用户内存空间
+        // 并通过 sret 陷入返回指令跳转到用户态运行应用程序，
+        // 具体恢复执行的地址和栈指针由新创建的 TrapContext 决定
         __restore(KERNEL_STACK.push_context(TrapContext::app_init_context(
             APP_BASE_ADDRESS,
             USER_STACK.get_sp(),
