@@ -6,12 +6,13 @@ mod lang_items;
 mod console;
 mod sbi;
 mod logging;
-pub mod batch;
+mod config;
+pub mod loader;
 mod sync;
 pub mod trap;
 mod syscall;
 
-use core::arch::global_asm;
+use core::{arch::global_asm};
 use log::{trace, debug, info, warn, error};
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
@@ -66,6 +67,6 @@ pub extern "C" fn rust_main() -> ! {
     error!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
 
     trap::init();
-    batch::init();
-    batch::run_next_app();
+    loader::load_apps();
+    unreachable!();
 }
