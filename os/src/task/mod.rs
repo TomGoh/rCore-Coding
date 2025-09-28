@@ -30,7 +30,7 @@ lazy_static!{
             task_status: TaskStatus::UnInit,
         }; MAX_APP_NUM];
 
-        for (i, task) in tasks.iter_mut().enumerate().take(num_app) {
+        for (i, task) in tasks.iter_mut().enumerate() {
             let entry_point = init_app_context(i);
             task.task_cx = TaskContext::goto_restore(entry_point);
             task.task_status = TaskStatus::Ready;
@@ -40,7 +40,7 @@ lazy_static!{
         TaskManager {
             num_app,
             inner: unsafe {
-                UPSafeCell::new(TaskManagerInner { tasks: tasks, current_task: 0 })
+                UPSafeCell::new(TaskManagerInner { tasks, current_task: 0 })
             }
         }
     };
@@ -79,7 +79,7 @@ impl TaskManager {
         let inner = self.inner.exclusive_access();
         let current_task = inner.current_task;
 
-        (current_task + 1..current_task + 1 + self.num_app)
+        (current_task + 1..current_task + self.num_app + 1)
             .map(|id| id % self.num_app)
             .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
     }
