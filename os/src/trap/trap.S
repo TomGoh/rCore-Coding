@@ -69,8 +69,7 @@ __restore:
     # 情况1: 通过 __restore 开始运行应用程序
     # 情况2: 处理陷入后返回用户态
     # 两种情况都需要恢复现场
-    # 通过 a0 寄存器传入的参数是 TrapContext 的地址
-    mv sp, a0
+    # sp 已经指向 TrapContext 的地址
     # 现在 sp->内核栈(已分配), sscratch->用户栈
     # 恢复 sstatus/sepc
     ld t0, 32*8(sp)

@@ -11,6 +11,7 @@ pub mod loader;
 mod sync;
 pub mod trap;
 mod syscall;
+pub mod task;
 
 use core::{arch::global_asm};
 use log::{trace, debug, info, warn, error};
@@ -68,5 +69,6 @@ pub extern "C" fn rust_main() -> ! {
 
     trap::init();
     loader::load_apps();
+    task::run_first_task();
     unreachable!();
 }

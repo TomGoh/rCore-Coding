@@ -8,7 +8,6 @@ use riscv::register::{
 use core::{arch::global_asm, panic};
 
 use crate::{println, syscall::syscall};
-use crate::batch::run_next_app;
 
 // 汇编代码文件，定义了陷入处理程序的入口
 global_asm!(include_str!("trap.S"));
@@ -58,12 +57,14 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) => {
             println!("[kernel] Page fault in application, bad addr = {:#x}, sepc = {:#x}", stval, cx.sepc);
             println!("[kernel] Killing application...");
-            run_next_app();
+            panic!("Page fault in application");
+            // run_next_app();
         },
         Trap::Exception(Exception::IllegalInstruction) => {
             println!("[kernel] Illegal instruction in application, sepc = {:#x}", cx.sepc);
             println!("[kernel] Killing application...");
-            run_next_app();
+            panic!("Illegal instruction in application");
+            // run_next_app();
         },
         _ => {
             panic!(
