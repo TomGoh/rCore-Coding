@@ -15,6 +15,11 @@ pub fn sys_exit(exit_code: i32) -> ! {
     panic!("Unreachable in sys_exit!"); // 这一行理论上不会被执行
 }
 
+/// yield 的 System Call 实现
+/// 返回值:
+/// - 成功时返回 0
+/// 注意:
+/// - 该函数会将当前任务挂起并切换到下一个任务
 pub fn sys_yield() -> isize {
     suspend_current_and_run_next();
     0

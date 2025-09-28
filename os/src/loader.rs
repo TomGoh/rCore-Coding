@@ -142,6 +142,13 @@ pub fn load_apps() {
     }
 }
 
+/// 初始化应用程序的 TrapContext 或 TaskContext
+/// 
+/// 参数:
+/// - app_id: 应用程序的 ID（从 0 开始）
+/// 
+/// 返回值:
+/// - 返回应用程序的 TrapContext 在内核栈中的地址
 pub fn init_app_context(app_id: usize) -> usize {
     KERNEL_STACK[app_id].push_context(TrapContext::app_init_context(
         get_base_addr_by_app_id(app_id),
