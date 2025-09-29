@@ -1,6 +1,9 @@
 #![no_main]
 #![no_std]
 #![cfg(target_arch = "riscv64")]
+#![feature(alloc_error_handler)]
+
+extern crate alloc;
 
 #[path = "boards/qemu.rs"]
 mod board;
@@ -17,6 +20,7 @@ mod trap;
 mod syscall;
 mod task;
 mod timer;
+mod mm;
 
 use core::{arch::global_asm};
 use log::{trace, debug, info, warn, error};
@@ -72,6 +76,8 @@ pub extern "C" fn rust_main() -> ! {
     );
     error!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
 
+    mm::init();
+    mm::heap_test();
     trap::init();
     loader::load_apps();
     trap::enable_timer_interrupts();
