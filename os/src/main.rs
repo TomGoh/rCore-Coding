@@ -1,17 +1,22 @@
 #![no_main]
 #![no_std]
 #![cfg(target_arch = "riscv64")]
+
+#[path = "boards/qemu.rs"]
+mod board;
+
 #[macro_use]
 mod lang_items;
 mod console;
 mod sbi;
 mod logging;
 mod config;
-pub mod loader;
+mod loader;
 mod sync;
-pub mod trap;
+mod trap;
 mod syscall;
-pub mod task;
+mod task;
+mod timer;
 
 use core::{arch::global_asm};
 use log::{trace, debug, info, warn, error};
@@ -48,7 +53,7 @@ pub extern "C" fn rust_main() -> ! {
     }
     clear_bss();
     logging::init();
-    println!("[kernel] Hello, world!");
+    info!("[kernel] Hello, kernel!");
     trace!(
         "[kernel] .text [{:#x}, {:#x})",
         stext as usize, etext as usize
@@ -69,6 +74,8 @@ pub extern "C" fn rust_main() -> ! {
 
     trap::init();
     loader::load_apps();
+    trap::enable_timer_interrupts();
+    timer::set_next_trigger();
     task::run_first_task();
     unreachable!();
 }

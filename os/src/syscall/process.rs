@@ -1,5 +1,7 @@
 //! App management syscalls
-use crate::{println, task::{exit_current_and_run_next, suspend_current_and_run_next}};
+use log::info;
+
+use crate::{task::{exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_ms};
 
 /// exit 的 System Call 实现
 /// 参数:
@@ -10,7 +12,7 @@ use crate::{println, task::{exit_current_and_run_next, suspend_current_and_run_n
 /// - 该函数会打印应用程序的退出码
 /// - 该函数假设当前有下一个应用程序可运行，当没有下一个应用程序运行时会关机
 pub fn sys_exit(exit_code: i32) -> ! {
-    println!("[kernel] Application exited with code {}", exit_code);
+    info!("[kernel] Application exited with code {}", exit_code);
     exit_current_and_run_next();
     panic!("Unreachable in sys_exit!"); // 这一行理论上不会被执行
 }
@@ -23,4 +25,8 @@ pub fn sys_exit(exit_code: i32) -> ! {
 pub fn sys_yield() -> isize {
     suspend_current_and_run_next();
     0
+}
+
+pub fn sys_get_time() -> isize {
+    get_time_ms() as isize
 }

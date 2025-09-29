@@ -1,13 +1,11 @@
 mod context;
 
 use riscv::register::{
-    mtvec::TrapMode,
-    scause::{self, Exception, Trap},
-    stval, stvec,
+    mtvec::TrapMode, scause::{self, Exception, Interrupt, Trap}, sie, stval, stvec
 };
 use core::{arch::global_asm, panic};
 
-use crate::{println, syscall::syscall};
+use crate::{println, syscall::syscall, task::suspend_current_and_run_next, timer::set_next_trigger};
 
 // 汇编代码文件，定义了陷入处理程序的入口
 global_asm!(include_str!("trap.S"));
@@ -66,6 +64,10 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
             panic!("Illegal instruction in application");
             // run_next_app();
         },
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            set_next_trigger();
+            suspend_current_and_run_next();
+        }
         _ => {
             panic!(
                 "Unsupported trap {:?}, stval = {:#x}, sepc = {:#x}, sstatus = {:#x}",
@@ -77,6 +79,12 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         },
     }
     cx
+}
+
+pub fn enable_timer_interrupts() {
+    unsafe {
+        sie::set_stimer();
+    }
 }
 
 pub use context::TrapContext;

@@ -1,12 +1,11 @@
 use crate::loader::{get_num_app, init_app_context};
-use crate::println;
 use crate::sbi::shutdown;
 use crate::task::context::TaskContext;
 use crate::task::switch::__switch;
 use crate::{config::MAX_APP_NUM, sync::UPSafeCell};
 use crate::task::task::{TaskControlBlock, TaskStatus};
 use lazy_static::*;
-use log::debug;
+use log::{debug, info};
 
 mod context;
 mod switch;
@@ -151,7 +150,7 @@ impl TaskManager {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
             }
         } else {
-            println!("[kernel] All tasks are completed! CPU halted.");
+            info!("[kernel] All tasks are completed!");
             shutdown(false);
         }
     }
