@@ -1,5 +1,21 @@
+use core::mem;
+
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
-use crate::{config::PAGE_SIZE, mm::{address::{PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum}, frame_allocator::{frame_alloc, FrameTracker}, page_table::{PTEFlags, PageTable}}};
+use log::debug;
+use crate::{config::{MEMORY_END, PAGE_SIZE}, mm::{address::{PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum}, frame_allocator::{frame_alloc, FrameTracker}, memory_set, page_table::{PTEFlags, PageTable}}};
+
+unsafe extern "C" {
+    safe fn stext();
+    safe fn etext();
+    safe fn srodata();
+    safe fn erodata();
+    safe fn sdata();
+    safe fn edata();
+    safe fn sbss_with_stack();
+    safe fn ebss();
+    safe fn ekernel();
+    safe fn strampoline();
+}
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MapType {
@@ -123,11 +139,68 @@ impl MemorySet {
         ), None);
     }
 
-    pub fn new_kernel() -> Self {
+    pub fn map_trampoline(&mut self) {
         todo!()
     }
 
+    pub fn new_kernel() -> Self {
+        let mut memory_set = Self::new_bare();
+        memory_set.map_trampoline();
+        debug!(".text [{:#x}, {:#x})", stext as usize, etext as usize);
+        debug!(".rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
+        debug!(".data [{:#x}, {:#x})", sdata as usize, edata as usize);
+        debug!(".bss [{:#x}, {:#x})", sbss_with_stack as usize, ebss as usize);
+
+        debug!("mapping .text section");
+        memory_set.push(MapArea::new(
+            (stext as usize).into(),
+            (etext as usize).into(),
+            MapType::Identical,
+            MapPermission::R | MapPermission::X
+        ), None);
+
+        debug!("mapping .data section");
+        memory_set.push(MapArea::new(
+            (sdata as usize).into(),
+            (edata as usize).into(),
+            MapType::Identical,
+            MapPermission::R | MapPermission::W,
+        ), None);
+
+        debug!("mapping .bss section");
+        memory_set.push(MapArea::new(
+            (sbss_with_stack as usize).into(),
+            (ebss as usize).into(),
+            MapType::Identical,
+            MapPermission::R | MapPermission::W,
+        ), None);
+
+        debug!("mapping physical memory");
+        memory_set.push(MapArea::new(
+            (ekernel as usize).into(),
+            MEMORY_END.into(),
+            MapType::Identical,
+            MapPermission::R | MapPermission::W,
+        ), None);
+
+        memory_set
+    }
+
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
+        let mut memory_set = Self::new_bare();
+        memory_set.map_trampoline();
+
+        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
+        let elf_header = elf.header;
+        let magic = elf_header.pt1.magic;
+        assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
+
+        let ph_count = elf_header.pt2.ph_count();
+        let mut max_end_vpn = VirtPageNum(0);
+
+        for i in 0..ph_count {
+            let ph = elf.program_header(i).unwrap();
+        }
         todo!()
     }
 }
