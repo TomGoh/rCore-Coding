@@ -1,10 +1,12 @@
-use crate::config::{PAGE_SIZE, PAGE_SIZE_BITS};
-use core::fmt::{self, Formatter, Debug};
+use crate::{config::{PAGE_SIZE, PAGE_SIZE_BITS}, mm::page_table::PageTableEntry};
+use core::{fmt::{self, Debug, Formatter}, iter::Step};
 
 const PA_WIDTH_SV39: usize = 56;
 const VA_WIDTH_SV39: usize = 39;
 const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;
 const VPN_WIDTH_SV39: usize = VA_WIDTH_SV39 - PAGE_SIZE_BITS;
+const PTE_PER_PAGE: usize = PAGE_SIZE / core::mem::size_of::<PageTableEntry>();
+const PG_INDEX_BIT_WIDTH: usize = 9; // 2^9 = 512
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr(pub usize);
@@ -126,10 +128,22 @@ impl PhysAddr {
 }
 
 impl PhysPageNum {
-    pub fn get_bytes_array(&self) -> &'static mut [u8] {
-        let pa: PhysAddr = (*self).into();
+    pub fn get_pte_array(&self) -> &'static mut [PageTableEntry] {
+        let pa: PhysAddr = self.clone().into();
         unsafe {
-            core::slice::from_raw_parts_mut(pa.0 as *mut u8, 4096)
+            core::slice::from_raw_parts_mut(pa.0 as *mut PageTableEntry, PTE_PER_PAGE)
+        }
+    }
+    pub fn get_bytes_array(&self) -> &'static mut [u8] {
+        let pa: PhysAddr = self.clone().into();
+        unsafe {
+            core::slice::from_raw_parts_mut(pa.0 as *mut u8, PAGE_SIZE)
+        }
+    }
+    pub fn get_mut<T>(&self) -> & 'static mut T {
+        let pa: PhysAddr = self.clone().into();
+        unsafe {
+            &mut *(pa.0 as *mut T).as_mut().unwrap()
         }
     }
 }
@@ -151,3 +165,96 @@ impl VirtAddr {
         self.page_offset() == 0
     }
 }
+
+impl VirtPageNum {
+    pub fn indecies(&self) -> [usize; 3] {
+        let mut vpn = self.0;
+        let mut indecies = [0usize; 3];
+
+        for i in (0..3).rev() {
+            indecies[i] = vpn & ((1 << PG_INDEX_BIT_WIDTH) - 1);
+            vpn >>= PG_INDEX_BIT_WIDTH;
+        }
+
+        indecies
+    }
+}
+
+pub trait StepByOne {
+    fn step(&mut self);
+}
+
+impl StepByOne for VirtPageNum {
+    fn step(&mut self) {
+        self.0 += 1;
+    }
+}
+
+#[derive(Copy, Clone)]
+/// a simple range structure for type T
+pub struct SimpleRange<T>
+where
+    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+{
+    l: T,
+    r: T,
+}
+impl<T> SimpleRange<T>
+where
+    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+{
+    pub fn new(start: T, end: T) -> Self {
+        assert!(start <= end, "start {:?} > end {:?}!", start, end);
+        Self { l: start, r: end }
+    }
+    pub fn get_start(&self) -> T {
+        self.l
+    }
+    pub fn get_end(&self) -> T {
+        self.r
+    }
+}
+impl<T> IntoIterator for SimpleRange<T>
+where
+    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+{
+    type Item = T;
+    type IntoIter = SimpleRangeIterator<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        SimpleRangeIterator::new(self.l, self.r)
+    }
+}
+/// iterator for the simple range structure
+pub struct SimpleRangeIterator<T>
+where
+    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+{
+    current: T,
+    end: T,
+}
+impl<T> SimpleRangeIterator<T>
+where
+    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+{
+    pub fn new(l: T, r: T) -> Self {
+        Self { current: l, end: r }
+    }
+}
+impl<T> Iterator for SimpleRangeIterator<T>
+where
+    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+{
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current == self.end {
+            None
+        } else {
+            let t = self.current;
+            self.current.step();
+            Some(t)
+        }
+    }
+}
+
+/// a simple range structure for virtual page number
+pub type VPNRange = SimpleRange<VirtPageNum>;
