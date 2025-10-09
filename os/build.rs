@@ -26,20 +26,20 @@ static TARGET_PATH: &str = "../user/target/riscv64gc-unknown-none-elf/release/";
 
 /// 应用程序数据插入函数
 /// 该函数的主要功能是扫描用户程序目录，生成包含所有用户程序的汇编链接文件
-/// 
+///
 /// 生成的 link_app.S 文件包含以下内容：
 /// 1. _num_app 符号：存储用户程序的总数量
 /// 2. 应用程序地址表：每个应用的起始和结束地址标识符
 /// 3. 二进制数据：使用 .incbin 指令嵌入每个用户程序的二进制文件
-/// 
+///
 /// 该文件会被内核链接时包含，使得内核能够在运行时访问和加载用户程序
-/// 
+///
 /// 返回值：Result<()> - 成功时返回 Ok(())，失败时返回错误信息
 fn insert_app_data() -> Result<()> {
     // 第一步：创建输出文件
     // 在内核的 src 目录下创建或覆盖 link_app.S 汇编文件
     let mut f = File::create("src/link_app.S").unwrap();
-    
+
     // 第二步：扫描用户程序目录，获取所有应用程序名称
     // 从 ../user/src/bin 目录读取所有源文件，提取应用程序名称（去掉扩展名）
     // 这些名称将用于生成对应的符号和包含二进制文件
@@ -85,7 +85,7 @@ _num_app:
     for (idx, app) in apps.iter().enumerate() {
         // 在构建时输出应用程序信息，便于调试和确认
         println!("app_{}: {}", idx, app);
-        
+
         // 为每个应用程序生成独立的数据段
         // 包含起始标签、二进制数据包含指令、结束标签
         writeln!(
@@ -94,8 +94,9 @@ _num_app:
     .section .data
     .global app_{0}_start
     .global app_{0}_end
+    .align 3
 app_{0}_start:
-    .incbin "{2}{1}.bin"
+    .incbin "{2}{1}"
 app_{0}_end:"#,
             idx, app, TARGET_PATH
         )?;
@@ -105,7 +106,7 @@ app_{0}_end:"#,
         // {2} = TARGET_PATH: 二进制文件路径
         // .incbin 指令将指定路径的二进制文件直接嵌入到汇编输出中
     }
-    
+
     // 函数执行成功，返回 Ok(())
     Ok(())
 }

@@ -3,9 +3,9 @@ mod context;
 use riscv::register::{
     mtvec::TrapMode, scause::{self, Exception, Interrupt, Trap}, sie, stval, stvec
 };
-use core::{arch::global_asm, panic};
+use core::{arch::{global_asm, asm}, panic};
 
-use crate::{println, syscall::syscall, task::suspend_current_and_run_next, timer::set_next_trigger};
+use crate::{config::{TRAMPOLINE, TRAP_CONTEXT}, println, syscall::syscall, task::{current_trap_cx, current_user_token, suspend_current_and_run_next}, timer::set_next_trigger};
 
 // 汇编代码文件，定义了陷入处理程序的入口
 global_asm!(include_str!("trap.S"));
@@ -23,6 +23,47 @@ pub fn init() {
     unsafe {
         stvec::write(__alltraps as usize, TrapMode::Direct);
     }
+}
+
+fn set_kernel_trap_entry() {
+    unsafe {
+        stvec::write(trap_from_kernel as usize, TrapMode::Direct);
+    }
+}
+
+fn set_user_trap_entry() {
+    unsafe {
+        stvec::write(TRAMPOLINE as usize, TrapMode::Direct);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub fn trap_return() -> ! {
+    set_user_trap_entry();
+    let trap_cx_ptr = TRAP_CONTEXT;
+    let user_satp = current_user_token();
+
+    unsafe extern "C" {
+        safe fn __alltraps();
+        safe fn __restore();
+    }
+
+    let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
+    unsafe {
+        asm!(
+            "fence.i",
+            "jr {restore_va}",
+            restore_va = in(reg) restore_va,
+            in("a0") trap_cx_ptr,
+            in("a1") user_satp,
+            options(noreturn)
+        );
+    }
+}
+
+#[unsafe(no_mangle)]
+pub fn trap_from_kernel() -> ! {
+    panic!("a trap from kernel!");
 }
 
 /// 通用陷入处理函数
@@ -43,7 +84,9 @@ pub fn init() {
 /// - 该函数会调用 run_next_app 切换到下一个应用程序
 /// - 该函数使用了 unsafe 代码块，因为直接操作硬件寄存器
 #[unsafe(no_mangle)]
-pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
+pub fn trap_handler() -> ! {
+    set_kernel_trap_entry();
+    let cx = current_trap_cx();
     let scause = scause::read();
     let stval = stval::read();
 
@@ -78,7 +121,7 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
             );
         },
     }
-    cx
+    trap_return();
 }
 
 pub fn enable_timer_interrupts() {

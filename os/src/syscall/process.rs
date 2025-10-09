@@ -1,7 +1,7 @@
 //! App management syscalls
 use log::info;
 
-use crate::{task::{exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_ms};
+use crate::{task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_ms};
 
 /// exit 的 System Call 实现
 /// 参数:
@@ -29,4 +29,13 @@ pub fn sys_yield() -> isize {
 
 pub fn sys_get_time() -> isize {
     get_time_ms() as isize
+}
+
+/// change data segment size
+pub fn sys_sbrk(size: i32) -> isize {
+    if let Some(old_brk) = change_program_brk(size) {
+        old_brk as isize
+    } else {
+        -1
+    }
 }

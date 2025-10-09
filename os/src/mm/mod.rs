@@ -1,14 +1,15 @@
-use crate::println;
+use crate::{mm::memory_set::KERNEL_SPACE, println};
 
 mod heap_allocator;
-mod address;
-mod page_table;
+pub mod address;
+pub mod page_table;
 mod frame_allocator;
-mod memory_set;
+pub mod memory_set;
 
 pub fn init() {
     heap_allocator::init_heap();
     frame_allocator::init_frame_allocator();
+    KERNEL_SPACE.exclusive_access().activate();
 }
 
 #[allow(dead_code)]

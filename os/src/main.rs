@@ -26,7 +26,7 @@ mod timer;
 mod mm;
 
 use core::{arch::global_asm};
-use log::{trace, debug, info, warn, error};
+use log::{trace, debug, info};
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
 
@@ -73,16 +73,16 @@ pub extern "C" fn rust_main() -> ! {
         "[kernel] .data [{:#x}, {:#x})",
         sdata as usize, edata as usize
     );
-    warn!(
+    info!(
         "[kernel] boot_stack top=bottom={:#x}, lower_bound={:#x}",
         boot_stack_top as usize, boot_stack_lower_bound as usize
     );
-    error!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
+    info!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
 
     mm::init();
+    mm::memory_set::remap_test();
     mm::heap_test();
     trap::init();
-    loader::load_apps();
     trap::enable_timer_interrupts();
     timer::set_next_trigger();
     task::run_first_task();

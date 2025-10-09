@@ -2,6 +2,7 @@ const SYSCALL_WRITE: usize = 64;
 const SYSCALL_EXIT: usize = 93;
 const SYSCALL_YIELD: usize = 124;
 const SYSCALL_GETTIME: usize = 169;
+const SYSCALL_SBRK: usize = 214;
 
 mod fs;
 mod process;
@@ -15,6 +16,7 @@ pub fn syscall(id: usize, args: [usize; 3]) -> isize {
         SYSCALL_EXIT =>  sys_exit(args[0] as i32),
         SYSCALL_YIELD => sys_yield(),
         SYSCALL_GETTIME => sys_get_time(),
+        SYSCALL_SBRK => sys_sbrk(args[0] as i32),
         _ => panic!("[kernel] Unsupported syscall ID: {}", id),
     }
 }

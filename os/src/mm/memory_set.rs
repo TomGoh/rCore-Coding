@@ -1,6 +1,9 @@
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use alloc::{collections::btree_map::BTreeMap, vec::Vec, sync::Arc};
 use log::debug;
-use crate::{config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE}, mm::{address::{PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum}, frame_allocator::{frame_alloc, FrameTracker}, page_table::{PTEFlags, PageTable}}};
+use lazy_static::lazy_static;
+use riscv::register::satp;
+use core::arch::asm;
+use crate::{config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE}, mm::{address::{PhysAddr, PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum}, frame_allocator::{frame_alloc, FrameTracker}, page_table::{PTEFlags, PageTable, PageTableEntry}}, sync::UPSafeCell};
 
 // 定义了一些外部符号，这些符号通常是在链接阶段由链接器脚本定义的，
 // 用于标识内核映像中的特定段的起始和结束地址
@@ -147,6 +150,7 @@ impl MapArea {
     /// 
     /// 参数：
     /// - `page_table`： 页表，用于完成取消映射操作
+    #[allow(unused)]
     pub fn unmap(&mut self, page_table: &mut PageTable) {
         for vpn in self.vpn_range {
             self.unmap_one(page_table, vpn);
@@ -179,6 +183,22 @@ impl MapArea {
             current_vpn.step();
         }
     }
+
+    #[allow(unused)]
+    pub fn shrink_to(&mut self, page_table: &mut PageTable, new_end: VirtPageNum) {
+        for vpn in VPNRange::new(new_end, self.vpn_range.get_end()) {
+            self.unmap_one(page_table, vpn)
+        }
+        self.vpn_range = VPNRange::new(self.vpn_range.get_start(), new_end);
+    }
+
+    #[allow(unused)]
+    pub fn append_to(&mut self, page_table: &mut PageTable, new_end: VirtPageNum) {
+        for vpn in VPNRange::new(self.vpn_range.get_end(), new_end) {
+            self.map_one(page_table, vpn)
+        }
+        self.vpn_range = VPNRange::new(self.vpn_range.get_start(), new_end);
+    }
 }
 
 /// 内存集，代表一个完整的地址空间区域，
@@ -203,6 +223,10 @@ impl MemorySet {
             page_table: PageTable::new(),
             areas: Vec::new(),
         }
+    }
+
+    pub fn token(&self) -> usize {
+        self.page_table.token()
     }
 
     /// 向内存集中添加一个新的逻辑段，
@@ -239,7 +263,11 @@ impl MemorySet {
     }
 
     pub fn map_trampoline(&mut self) {
-        todo!()
+        self.page_table.map(
+            VirtAddr::from(TRAMPOLINE).into(),
+            PhysAddr::from(strampoline as usize).into(),
+            PTEFlags::R | PTEFlags::X
+        );
     }
 
     /// 创建一个新的内核内存集，
@@ -256,6 +284,8 @@ impl MemorySet {
         debug!(".rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
         debug!(".data [{:#x}, {:#x})", sdata as usize, edata as usize);
         debug!(".bss [{:#x}, {:#x})", sbss_with_stack as usize, ebss as usize);
+        debug!("physical memory [{:#x}, {:#x})", ekernel as usize, MEMORY_END);
+        debug!("ekernel address: {:#x}", ekernel as usize);
 
         debug!("mapping .text section");
         memory_set.push(MapArea::new(
@@ -263,6 +293,14 @@ impl MemorySet {
             (etext as usize).into(),
             MapType::Identical,
             MapPermission::R | MapPermission::X
+        ), None);
+
+        debug!("mapping .rodata section");
+        memory_set.push(MapArea::new(
+            (srodata as usize).into(),
+            (erodata as usize).into(),
+            MapType::Identical,
+            MapPermission::R,
         ), None);
 
         debug!("mapping .data section");
@@ -288,6 +326,16 @@ impl MemorySet {
             MapType::Identical,
             MapPermission::R | MapPermission::W,
         ), None);
+
+        debug!("mapping memory-mapped registers");
+        for pair in MMIO {
+            memory_set.push(MapArea::new(
+                (*pair).0.into(),
+                ((*pair).0 + (*pair).1).into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ), None);
+        }
 
         memory_set
     }
@@ -445,4 +493,71 @@ impl MemorySet {
         // 返回内存集、用户栈顶地址和应用程序入口点地址
         (memory_set, user_stack_top, elf.header.pt2.entry_point() as usize)
     }
+
+    pub fn activate(&self) {
+        let satp = self.page_table.token();
+        unsafe {
+            satp::write(satp);
+            asm!("sfence.vma");
+        }
+    }
+
+    pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+        self.page_table.translate(vpn)
+    }
+
+        #[allow(unused)]
+    pub fn shrink_to(&mut self, start: VirtAddr, new_end: VirtAddr) -> bool {
+        if let Some(area) = self
+            .areas
+            .iter_mut()
+            .find(|area| area.vpn_range.get_start() == start.floor())
+        {
+            area.shrink_to(&mut self.page_table, new_end.ceil());
+            true
+        } else {
+            false
+        }
+    }
+
+    #[allow(unused)]
+    pub fn append_to(&mut self, start: VirtAddr, new_end: VirtAddr) -> bool {
+        if let Some(area) = self
+            .areas
+            .iter_mut()
+            .find(|area| area.vpn_range.get_start() == start.floor())
+        {
+            area.append_to(&mut self.page_table, new_end.ceil());
+            true
+        } else {
+            false
+        }
+    }
+}
+
+lazy_static! {
+    pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> = Arc::new(unsafe {
+        UPSafeCell::new(MemorySet::new_kernel()
+    )});
+}
+
+#[allow(dead_code)]
+pub fn remap_test() {
+    let kernel_space = KERNEL_SPACE.exclusive_access();
+    let mid_text: VirtAddr = ((stext as usize + etext as usize) / 2).into();
+    let mid_rodata: VirtAddr = ((srodata as usize + erodata as usize) / 2).into();
+    let mid_data: VirtAddr = ((sdata as usize + edata as usize) / 2).into();
+    assert_eq!(
+        kernel_space.page_table.translate(mid_text.floor()).unwrap().writable(),
+        false
+    );
+    assert_eq!(
+        kernel_space.page_table.translate(mid_rodata.floor()).unwrap().writable(),
+        false,
+    );
+    assert_eq!(
+        kernel_space.page_table.translate(mid_data.floor()).unwrap().executable(),
+        false,
+    );
+    debug!("remap_test passed!");
 }

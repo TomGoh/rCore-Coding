@@ -1,4 +1,4 @@
-use riscv::register::sstatus::{self, SPP, Sstatus};
+use riscv::register::sstatus::{self, Sstatus};
 
 /// 保存陷入内核态时用户态程序运行的上下文
 #[repr(C)]
@@ -11,6 +11,13 @@ pub struct TrapContext {
     // 用于返回用户态程序时设置到 sepc 寄存器
     // 防止嵌套 Trap 时丢失用户态程序的返回地址
     pub sepc: usize,
+    /// 表示内核地址空间的token，也就是内核页表的起始物理地址
+    pub kernel_satp: usize,
+    /// 表示内核栈的栈顶的虚拟地址
+    pub kernel_sp: usize,
+    /// 表示内核态的 Trap 处理函数的入口地址
+    pub trap_handler: usize,
+
 }
 
 impl TrapContext { 
@@ -28,19 +35,26 @@ impl TrapContext {
      /// 参数:
      /// - entry: 用户态程序的入口地址
      /// - sp: 用户态程序的栈顶地址
+     /// - kernel_satp: 内核地址空间的 token
+     /// - kernel_sp: 内核栈的栈顶地址
+     /// - trap_handler: 内核态的 Trap 处理函数的入口地址
      /// 返回值:
      /// - 返回一个初始化好的 TrapContext 实例
      /// 注意:
      /// - 该函数会将 sstatus 寄存器的 SPP 位设置为 User，表示下次从内核态返回时进入用户态
      /// - sepc 寄存器会被设置为 entry，表示用户态程序从该地址开始执行
      /// - x2 寄存器（栈指针）会被设置为 sp，表示用户态程序的栈顶位置
-    pub fn app_init_context(entry: usize, sp: usize) -> Self {
+    pub fn app_init_context(entry_point: usize, sp: usize, kernel_satp: usize, kernel_sp: usize, trap_handler: usize) -> Self {
         let mut sstatus = sstatus::read();
-        sstatus.set_spp(SPP::User);
+        sstatus.set_spp(sstatus::SPP::User);
+
         let mut cx = Self {
             x: [0; 32],
             sstatus,
-            sepc: entry,
+            sepc: entry_point,
+            kernel_satp,
+            kernel_sp,
+            trap_handler,
         };
         cx.set_sp(sp);
         cx

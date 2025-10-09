@@ -22,6 +22,13 @@ SECTIONS
     .text : {
         /* 入口点代码放在最前面 - 包含 _start 符号 */
         *(.text.entry)
+        /* 对齐到 4KB 页边界以便 trampoline 代码隔离 */
+        . = ALIGN(4K);
+        /* Trampoline 代码 - 用于用户态和内核态切换的跳板 */
+        strampoline = .;  /* 标记 trampoline 代码开始位置的符号 */
+        *(.text.trampoline);
+        /* 对齐到 4KB 页边界 */
+        . = ALIGN(4K);
         /* 所有其他可执行代码段 */
         *(.text .text.*)
     }
@@ -58,6 +65,7 @@ SECTIONS
     
     /* BSS 段 - 包含未初始化的全局变量和静态变量 */
     /* 这些变量将在运行时被清零 */
+    sbss_with_stack = .;  /* 标记包含栈的 BSS 段开始位置的符号 */
     .bss : {
         /* 内核栈空间 - 放在 BSS 段开头 */
         *(.bss.stack)

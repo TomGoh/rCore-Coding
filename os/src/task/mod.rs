@@ -1,9 +1,11 @@
-use crate::loader::{get_num_app, init_app_context};
+use crate::loader::{get_num_app, get_app_data};
 use crate::sbi::shutdown;
 use crate::task::context::TaskContext;
 use crate::task::switch::__switch;
+use crate::trap::TrapContext;
 use crate::{config::MAX_APP_NUM, sync::UPSafeCell};
 use crate::task::task::{TaskControlBlock, TaskStatus};
+use alloc::vec::Vec;
 use lazy_static::*;
 use log::{debug, info};
 
@@ -24,7 +26,7 @@ pub struct TaskManager {
 /// 使用数组存储所有任务的控制块，大小为 MAX_APP_NUM
 /// 当前运行的任务 ID 用于标识当前正在运行的任务
 pub struct TaskManagerInner {
-    tasks: [TaskControlBlock; MAX_APP_NUM],
+    tasks: Vec<TaskControlBlock>,
     current_task: usize,
 }
 
@@ -33,27 +35,23 @@ lazy_static!{
     /// 
     /// 初始化时会加载所有用户应用程序，并将它们的状态设置为 Ready，同时预设好它们的上下文
     pub static ref TASK_MANAGER: TaskManager = {
+        debug!("init task manager");
         let num_app = get_num_app();
-        let mut tasks = [TaskControlBlock {
-            task_cx: TaskContext::zero_init(),
-            task_status: TaskStatus::UnInit,
-        }; MAX_APP_NUM];
-
-        for (i, task) in tasks.iter_mut().enumerate() {
-            // 获取用户应用程序的入口点，在 `init_app_context` 中具体的实现为
-            // 返回对应的应用在内核栈中 `TrapContext` 的地址
-            let entry_point = init_app_context(i);
-            // 调用用户应用程序的入口点进行设置
-            task.task_cx = TaskContext::goto_restore(entry_point);
-            task.task_status = TaskStatus::Ready;
-            debug!("[kernel] App {} entry point = {:#x}", i, entry_point);
+        debug!("num_app = {}", num_app);
+        let mut tasks: Vec<TaskControlBlock> = Vec::with_capacity(MAX_APP_NUM);
+         for i in 0..num_app {
+            tasks.push(TaskControlBlock::new(
+                get_app_data(i),
+                i,
+            ));
         }
 
         TaskManager {
             num_app,
-            inner: unsafe {
-                UPSafeCell::new(TaskManagerInner { tasks, current_task: 0 })
-            }
+            inner: unsafe { UPSafeCell::new(TaskManagerInner {
+                tasks,
+                current_task: 0,
+            }) },
         }
     };
 }
@@ -154,6 +152,25 @@ impl TaskManager {
             shutdown(false);
         }
     }
+
+    fn get_current_token(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        inner.tasks[current_task].get_user_token()
+    }
+
+    fn get_current_trap_cx(&self) -> &mut TrapContext {
+        let inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        inner.tasks[current_task].get_trap_cx()
+    }
+
+        /// Change the current 'Running' task's program break
+    pub fn change_current_program_brk(&self, size: i32) -> Option<usize> {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].change_program_brk(size)
+    }
 }
 
 /// 运行第一个任务的接口函数
@@ -186,4 +203,17 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+pub fn current_user_token() -> usize {
+    TASK_MANAGER.get_current_token()
+}
+
+pub fn current_trap_cx() -> &'static mut TrapContext {
+    TASK_MANAGER.get_current_trap_cx()
+}
+
+/// Change the current 'Running' task's program break
+pub fn change_program_brk(size: i32) -> Option<usize> {
+    TASK_MANAGER.change_current_program_brk(size)
 }
