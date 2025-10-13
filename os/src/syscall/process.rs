@@ -1,7 +1,10 @@
 //! App management syscalls
-use log::info;
+use log::{debug, info};
 
-use crate::{task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_ms};
+use crate::loader::get_app_data_by_name;
+use crate::mm::page_table::translated_str;
+use crate::timer::get_time_ms;
+use crate::task::{add_task, current_task, current_user_token, suspend_current_and_run_next};
 
 /// exit 的 System Call 实现
 /// 参数:
@@ -31,10 +34,30 @@ pub fn sys_get_time() -> isize {
     get_time_ms() as isize
 }
 
-/// change data segment size
-pub fn sys_sbrk(size: i32) -> isize {
-    if let Some(old_brk) = change_program_brk(size) {
-        old_brk as isize
+pub fn sys_fork() -> isize {
+    let curr_task = current_task().unwrap();
+    let new_task = curr_task.fork();
+    let new_pid = new_task.getpid();
+
+    debug!("fork: new pid = {}", new_pid);
+
+    let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
+    trap_cx.x[10] = 0; // 子进程 fork 返回值
+
+    add_task(new_task);
+    new_pid as isize
+}
+
+pub fn sys_exec(path: *const u8) -> isize {
+    let token = current_user_token();
+    let path = translated_str(token, path);
+
+    debug!("exec: path = {}", path);
+
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let task = current_task().unwrap();
+        task.exec(data);
+        0
     } else {
         -1
     }

@@ -39,6 +39,7 @@ bitflags! {
     /// - `W`： 写权限，表示该逻辑段可以被写入
     /// - `X`： 执行权限，表示该逻辑段可以被执行
     /// - `U`： 用户权限，表示该逻辑段可以被用户态程序访问
+    #[derive(Copy, Clone)]
     pub struct MapPermission: u8 {
         const R = 1 << 1;
         const W = 1 << 2;
@@ -184,6 +185,15 @@ impl MapArea {
         }
     }
 
+    pub fn from_another(another: &Self) -> Self {
+        Self {
+            vpn_range: VPNRange::new(another.vpn_range.get_start(), another.vpn_range.get_end()),
+            map_type: another.map_type,
+            map_permission: another.map_permission,
+            data_frames: BTreeMap::new(),
+        }
+    }
+
     #[allow(unused)]
     pub fn shrink_to(&mut self, page_table: &mut PageTable, new_end: VirtPageNum) {
         for vpn in VPNRange::new(new_end, self.vpn_range.get_end()) {
@@ -225,6 +235,38 @@ impl MemorySet {
         }
     }
 
+    /// 从一个已存在的用户态内存集中创建一个新的内存集，
+    /// 复制所有作为参数传入的内存集中的逻辑段与数据，
+    /// 并利用 `MemorySet::push` 方法重新创建对应的物理内存映射
+    /// 并添加到新的内存集中，
+    /// 最后在完成物理映射的创建后将参数内存集的数据复制到新的内存集中并返回
+    /// 
+    /// 参数：
+    /// - `userspace`： 已存在的用户态内存集
+    /// 
+    /// 返回值：
+    /// - `Self`： 返回一个新的 `MemorySet` 实例，表示创建的内存集
+    pub fn from_existing_user(userspace: &MemorySet) -> Self {
+        let mut memory_set = Self::new_bare();
+
+        memory_set.map_trampoline();
+        for area in userspace.areas.iter() {
+            let new_area = MapArea::from_another(area);
+            memory_set.push(new_area, None);
+
+            for vpn in area.vpn_range {
+                let src_ppn = userspace.translate(vpn).unwrap().ppn();
+                let dest_ppn = memory_set.translate(vpn).unwrap().ppn();
+                dest_ppn.get_bytes_array().copy_from_slice(src_ppn.get_bytes_array());
+            }
+        }
+        memory_set
+    }
+
+    /// 获取当前MemorySet对应的页表的页号
+    /// 
+    /// 返回值:
+    /// - `usize`：返回当前MemorySet对应的页表的页号
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
@@ -262,12 +304,36 @@ impl MemorySet {
         ), None);
     }
 
+    /// 映射 Trampoline 逻辑段，
+    /// 该逻辑段用于在用户态和内核态之间切换，主要存储 Trampoline 代码和 TrapContext 结构体
+    /// 具体的实现是调用 `page_table.map` 方法将 Trampoline 的虚拟地址映射到实际的物理地址，
+    /// 并设置相应的权限为可读和可执行
+    /// 
+    /// 返回值：
+    /// - `()`： 无返回值
     pub fn map_trampoline(&mut self) {
         self.page_table.map(
             VirtAddr::from(TRAMPOLINE).into(),
             PhysAddr::from(strampoline as usize).into(),
             PTEFlags::R | PTEFlags::X
         );
+    }
+
+    /// 根据起始虚拟页号从内存集中移除一个逻辑段，
+    /// 该方法会在逻辑段列表 `areas` 中查找起始虚拟页号与传入参数匹配的逻辑段，
+    /// 如果找到则调用 `MapArea.unmap` 方法将其从内存集的页表 `page_table` 中取消映射，
+    /// 并将其从逻辑段列表中移除
+    ///
+    /// 参数：
+    /// - `start_vpn`： 需要被移除的逻辑段的起始虚拟页号
+    pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
+        if let Some((index, area)) = self.areas.iter_mut().enumerate().find(
+            |(_, area)| {
+                area.vpn_range.get_start() == start_vpn
+            }) {
+                area.unmap(&mut self.page_table);
+                self.areas.remove(index);
+            }
     }
 
     /// 创建一个新的内核内存集，
