@@ -138,5 +138,4 @@ jobs:
       - name: Build and run in QEMU
         working-directory: os
         run: |
-          make build
           timeout 60s make run
