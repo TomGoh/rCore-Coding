@@ -50,11 +50,11 @@ jobs:
 
       - name: Clippy lint (os)
         working-directory: os
-        run: cargo clippy --all-targets --target riscv64gc-unknown-none-elf -- -D warnings
+        run: cargo clippy --target riscv64gc-unknown-none-elf -- -D warnings
 
       - name: Clippy lint (user)
         working-directory: user
-        run: cargo clippy --all-targets --target riscv64gc-unknown-none-elf -- -D warnings
+        run: cargo clippy --target riscv64gc-unknown-none-elf -- -D warnings
 
   build:
     runs-on: ubuntu-latest

@@ -1,0 +1,13 @@
+# Rustfmt configuration for rCore-Coding project
+
+# Keep imports as they are - don't reorganize them aggressively
+imports_granularity = "Preserve"
+reorder_imports = true
+
+# Format settings
+edition = "2021"
+newline_style = "Unix"
+
+# Don't break long doc comments
+wrap_comments = false
+comment_width = 100
