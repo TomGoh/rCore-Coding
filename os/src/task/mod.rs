@@ -47,4 +47,35 @@ pub fn suspend_current_and_run_next() {
 
     add_task(curr_task);
     schedule(curr_task_cxptr);
-} 
+}
+
+/// 退出当前的任务进程，回收资源，处置子任务进程，调度其他就绪任务进程
+/// 
+/// 参数：
+/// - exit_code： 当前任务进程执行后的返回退出值，设定在当前任务的 TCB 中
+pub fn exit_current_and_run_next(exit_code: i32) {
+    let curr_tcb = current_task().unwrap();
+    let mut inner = curr_tcb.inner_exclusive_access();
+    // 标记该执行完成的进程为 Zombie，在 TCB 中记录退出值
+    inner.task_status = task::TaskStatus::Zombie;
+    inner.exit_code = exit_code;
+
+    // 处置该进程的子进程，统一归类到 init 进程的子进程列表中，并更新对应子进程的父进程
+    let mut init_proc_inner = INITPROC.inner_exclusive_access();
+    for child in inner.children.iter() {
+        child.inner_exclusive_access().parent = Some(Arc::downgrade(&INITPROC));
+        init_proc_inner.children.push(child.clone());
+    }
+    drop(init_proc_inner);
+
+    // 回收资源，包括：
+    // - 清空子进程列表
+    // - 回收数据页面
+    inner.children.clear();
+    inner.memory_set.recycle_data_pages();
+    drop(inner);
+    drop(curr_tcb);
+    // 创建空的任务上下文以便切换到下一个就绪的任务进程
+    let mut _unused = TaskContext::zero_init();
+    schedule(&mut _unused as *mut _);
+}

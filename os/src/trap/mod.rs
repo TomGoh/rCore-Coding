@@ -5,24 +5,20 @@ use riscv::register::{
 };
 use core::{arch::{global_asm, asm}, panic};
 
-use crate::{config::{TRAMPOLINE, TRAP_CONTEXT}, println, syscall::syscall, task::{current_trap_cx, current_user_token, suspend_current_and_run_next}, timer::set_next_trigger};
+use crate::{config::{TRAMPOLINE, TRAP_CONTEXT}, println, syscall::syscall, task::{current_trap_cx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next}, timer::set_next_trigger};
 
 // 汇编代码文件，定义了陷入处理程序的入口
 global_asm!(include_str!("trap.S"));
 
 /// 陷入机制的初始化函数
 /// 该函数设置陷入处理程序的入口地址和模式
-/// 具体来说，它将 stvec 寄存器设置为 __alltraps 函数的地址
-/// 并将陷入模式设置为 TrapMode::Direct
-/// 这样所有的陷入（异常和中断）都会跳转到 __alltraps 进行处理
+/// 在内核初始化阶段，将 stvec 设置为 trap_from_kernel
+/// 这样如果在内核态发生陷入，会触发 panic
 /// 注意:
 /// - 该函数必须在内核初始化阶段调用一次
 /// - 该函数使用了 unsafe 代码块，因为直接操作硬件寄存器
 pub fn init() {
-    unsafe extern "C" { safe fn __alltraps(); }
-    unsafe {
-        stvec::write(__alltraps as usize, TrapMode::Direct);
-    }
+    set_kernel_trap_entry();
 }
 
 fn set_kernel_trap_entry() {
@@ -34,6 +30,12 @@ fn set_kernel_trap_entry() {
 fn set_user_trap_entry() {
     unsafe {
         stvec::write(TRAMPOLINE as usize, TrapMode::Direct);
+    }
+}
+
+pub fn enable_timer_interrupt() {
+    unsafe {
+        sie::set_stimer();
     }
 }
 
@@ -97,17 +99,17 @@ pub fn trap_handler() -> ! {
             cx = current_trap_cx();
             cx.x[10] = result;
         },
-        Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) => {
-            println!("[kernel] Page fault in application, bad addr = {:#x}, sepc = {:#x}", stval, cx.sepc);
+        Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) |
+        Trap::Exception(Exception::InstructionFault) | Trap::Exception(Exception::InstructionPageFault) |
+        Trap::Exception(Exception::LoadFault) | Trap::Exception(Exception::LoadPageFault) => {
+            println!("[kernel] Page fault in application, bad addr = {:#x}, sepc = {:#x}", stval, current_trap_cx().sepc);
             println!("[kernel] Killing application...");
-            panic!("Page fault in application");
-            // run_next_app();
+            exit_current_and_run_next(-2);
         },
         Trap::Exception(Exception::IllegalInstruction) => {
-            println!("[kernel] Illegal instruction in application, sepc = {:#x}", cx.sepc);
+            println!("[kernel] Illegal instruction in application, sepc = {:#x}", current_trap_cx().sepc);
             println!("[kernel] Killing application...");
-            panic!("Illegal instruction in application");
-            // run_next_app();
+            exit_current_and_run_next(-3);
         },
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
@@ -118,18 +120,12 @@ pub fn trap_handler() -> ! {
                 "Unsupported trap {:?}, stval = {:#x}, sepc = {:#x}, sstatus = {:#x}",
                 scause.cause(),
                 stval,
-                cx.sepc,
-                cx.sstatus.bits()
+                current_trap_cx().sepc,
+                current_trap_cx().sstatus.bits()
             );
         },
     }
     trap_return();
-}
-
-pub fn enable_timer_interrupts() {
-    unsafe {
-        sie::set_stimer();
-    }
 }
 
 pub use context::TrapContext;

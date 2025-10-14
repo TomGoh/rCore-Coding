@@ -80,11 +80,11 @@ pub extern "C" fn rust_main() -> ! {
     info!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
 
     mm::init();
-    mm::memory_set::remap_test();
-    mm::heap_test();
+    task::add_initproc();
     trap::init();
-    trap::enable_timer_interrupts();
+    trap::enable_timer_interrupt();
     timer::set_next_trigger();
-    task::run_first_task();
-    unreachable!();
+    loader::list_apps();
+    task::run_tasks();
+    panic!("Unreachable in rust_main!");
 }

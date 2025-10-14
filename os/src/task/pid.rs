@@ -62,8 +62,8 @@ impl KernelStack {
         let (kernel_stack_bottom, kernel_stack_top) = kernel_stack_position(pid);
         KERNEL_SPACE.exclusive_access().insert_framed_area(
             kernel_stack_bottom.into(),
-             kernel_stack_top.into(), 
-            MapPermission::R | MapPermission::U,
+             kernel_stack_top.into(),
+            MapPermission::R | MapPermission::W,
         );
 
         KernelStack { pid }
