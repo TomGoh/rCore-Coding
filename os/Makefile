@@ -32,6 +32,7 @@ env:
 	@command -v cargo-objdump >/dev/null 2>&1 || cargo install cargo-binutils
 	rustup component add rust-src
 	rustup component add llvm-tools-preview
+	rustup component add clippy
 	rustup target add riscv64gc-unknown-none-elf
 
 $(KERNEL_BIN): kernel
