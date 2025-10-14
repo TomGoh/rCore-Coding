@@ -1,7 +1,6 @@
 pub fn console_putchar(c: usize) {
     #[allow(deprecated)]
     sbi_rt::legacy::console_putchar(c);
-    
 }
 
 #[allow(unused)]
@@ -11,7 +10,7 @@ pub fn console_getchar() -> usize {
 }
 
 pub fn shutdown(failure: bool) -> ! {
-    use sbi_rt::{system_reset, NoReason, Shutdown, SystemFailure};
+    use sbi_rt::{NoReason, Shutdown, SystemFailure, system_reset};
     if !failure {
         system_reset(Shutdown, NoReason);
     } else {

@@ -8,7 +8,7 @@ pub struct UPSafeCell<T> {
 
 unsafe impl<T> Sync for UPSafeCell<T> {}
 
-impl <T> UPSafeCell<T> {
+impl<T> UPSafeCell<T> {
     /// 创建一个新的 UPSafeCell
     /// # Safety
     /// 该函数不保证数据竞争的安全性

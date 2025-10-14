@@ -1,13 +1,13 @@
-use core::cell::RefMut;
-use alloc::sync::{Arc, Weak};
-use alloc::vec::Vec;
 use crate::config::TRAP_CONTEXT;
+use crate::mm::address::{PhysPageNum, VirtAddr};
+use crate::mm::memory_set::{KERNEL_SPACE, MemorySet};
 use crate::sync::UPSafeCell;
 use crate::task::context::TaskContext;
-use crate::mm::memory_set::{MemorySet, KERNEL_SPACE};
-use crate::mm::address::{PhysPageNum, VirtAddr};
-use crate::task::pid::{pid_alloc, KernelStack, PidHandle};
-use crate::trap::{trap_handler, TrapContext};
+use crate::task::pid::{KernelStack, PidHandle, pid_alloc};
+use crate::trap::{TrapContext, trap_handler};
+use alloc::sync::{Arc, Weak};
+use alloc::vec::Vec;
+use core::cell::RefMut;
 
 #[derive(Copy, Clone, PartialEq)]
 /// task status: UnInit, Ready, Running, Exited
@@ -22,11 +22,11 @@ pub enum TaskStatus {
 pub struct TaskControlBlock {
     pub pid: PidHandle,
     pub kernel_stack: KernelStack,
-    inner: UPSafeCell<TaskControlBlockInner>
+    inner: UPSafeCell<TaskControlBlockInner>,
 }
 
 /// 实际存储任务状态和信息的结构体
-pub struct TaskControlBlockInner{
+pub struct TaskControlBlockInner {
     /// 应用的状态
     pub task_status: TaskStatus,
     /// 应用的上下文
@@ -48,7 +48,7 @@ pub struct TaskControlBlockInner{
 
 impl TaskControlBlockInner {
     /// 获取任务对应的 TrapContext 的可变引用
-    /// 
+    ///
     /// 返回值:
     /// - `&'static mut TrapContext`：返回任务对应的 TrapContext 的可变引用
     pub fn get_trap_cx(&self) -> &'static mut TrapContext {
@@ -56,7 +56,7 @@ impl TaskControlBlockInner {
     }
 
     /// 获取任务对应的页表的页号
-    /// 
+    ///
     /// 返回值:
     /// - `usize`：返回任务对应的页表的页号
     pub fn get_user_token(&self) -> usize {
@@ -64,7 +64,7 @@ impl TaskControlBlockInner {
     }
 
     /// 获取任务的当前状态
-    /// 
+    ///
     /// 返回值:
     /// - `TaskStatus`：返回任务的当前状态
     pub fn get_status(&self) -> TaskStatus {
@@ -72,7 +72,7 @@ impl TaskControlBlockInner {
     }
 
     /// 检查任务是否处于僵尸状态且没有子进程
-    /// 
+    ///
     /// 返回值:
     /// - `bool`：如果任务处于僵尸状态且没有子进程，返回 true；否则返回 false
     pub fn is_zombie(&self) -> bool {
@@ -81,9 +81,8 @@ impl TaskControlBlockInner {
 }
 
 impl TaskControlBlock {
-
     /// 获取任务控制块内部的独占可变引用
-    /// 
+    ///
     /// 返回值:
     /// - `RefMut<'_, TaskControlBlockInner>`：返回任务控制块内部的独占可变引用
     pub fn inner_exclusive_access(&self) -> RefMut<'_, TaskControlBlockInner> {
@@ -91,15 +90,18 @@ impl TaskControlBlock {
     }
 
     /// 依据 ELF 文件数据创建一个新的任务控制块
-    /// 
+    ///
     /// 参数：
     /// - elf_data: ELF 文件的字节切片引用
-    pub fn new(elf_data: &[u8]) -> Self{
+    pub fn new(elf_data: &[u8]) -> Self {
         // 首先，调用 `MemorySet::from_elf` 函数从 ELF 文件数据中创建内存映射，
         // 并获取映射完成后的用户栈顶地址和程序入口点以及内存映射对象
         let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
         // 根据内存映射对象，获取当前应用程序对应的 `TrapContext` 的物理页号
-        let trap_cx_ppn = memory_set.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT).into())
+            .unwrap()
+            .ppn();
         // 设置应用的初始状态为 `Ready`，分配一个新的 PID 句柄，
         // 并根据 PID 句柄创建内核栈后记录内核栈对象和起始地址
         let task_status = TaskStatus::Ready;
@@ -112,16 +114,18 @@ impl TaskControlBlock {
         let task_control_block = Self {
             pid: pid_handle,
             kernel_stack,
-            inner: unsafe { UPSafeCell::new(TaskControlBlockInner {
-                task_status,
-                task_cx: TaskContext::goto_trap_return(kernel_stack_top),
-                memory_set,
-                trap_cx_ppn,
-                base_size: user_sp,
-                parent: None,
-                children: Vec::new(),
-                exit_code: 0,
-            }) },
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner {
+                    task_status,
+                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+                    memory_set,
+                    trap_cx_ppn,
+                    base_size: user_sp,
+                    parent: None,
+                    children: Vec::new(),
+                    exit_code: 0,
+                })
+            },
         };
 
         // 最后，读取刚刚初始化的当前应用对应的 TCB 中的 TrapContext，
@@ -135,13 +139,13 @@ impl TaskControlBlock {
             user_sp,
             KERNEL_SPACE.exclusive_access().token(),
             kernel_stack_top,
-            trap_handler as usize
+            trap_handler as usize,
         );
         task_control_block
     }
 
     /// 获取任务的 PID
-    /// 
+    ///
     /// 返回值:
     /// - `usize`：返回任务的 PID
     pub fn getpid(&self) -> usize {
@@ -149,7 +153,7 @@ impl TaskControlBlock {
     }
 
     /// 使用新的 ELF 文件数据替换当前任务的内存空间和上下文
-    /// 
+    ///
     /// 参数:
     /// - elf_data: ELF 文件的字节切片引用
     pub fn exec(&self, elf_data: &[u8]) {
@@ -161,7 +165,10 @@ impl TaskControlBlock {
         // 这里不需要手动释放旧的内存映射
         // 只需要创建新的内存映射并替换即可
         let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
-        let trap_cx_ppn = memory_set.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT).into())
+            .unwrap()
+            .ppn();
 
         // 而后，利用创建的内存映射与陷入上下文信息
         // 更新当前任务控制块内部的内存映射对象和 TrapContext，
@@ -175,7 +182,7 @@ impl TaskControlBlock {
             user_sp,
             KERNEL_SPACE.exclusive_access().token(),
             self.kernel_stack.get_top(),
-            trap_handler as usize
+            trap_handler as usize,
         );
         // 在 exec 中无需对于任务上下文进行额外处理
         // 因为当前任务本身已经在执行了，
@@ -184,10 +191,10 @@ impl TaskControlBlock {
     }
 
     /// 创建当前任务的一个子任务，主要是通过复制当前任务的内存空间和状态来实现
-    /// 
+    ///
     /// 参数：
     /// - `self: &Arc<TaskControlBlock>`：当前任务的引用计数智能指针
-    /// 
+    ///
     /// 返回值：
     /// - `Arc<TaskControlBlock>`：返回新创建的子任务的引用计数智能指针
     pub fn fork(self: &Arc<TaskControlBlock>) -> Arc<TaskControlBlock> {
@@ -196,7 +203,10 @@ impl TaskControlBlock {
         // 然后，调用 `MemorySet::from_existing_user` 方法复制当前任务的内存空间
         let memory_set = MemorySet::from_existing_user(&parent_inner.memory_set);
         // 根据复制的地址空间获取 TrapContext 所在的物理页号
-        let trap_cx_ppn = memory_set.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT).into())
+            .unwrap()
+            .ppn();
         // 分配一个新的 PID 句柄，并为子任务创建一个新的内核栈
         // 由于所有的任务的内核栈在内核中使用的是同一个页表，因此创建的内核栈栈顶地址会
         // 由于 PID 不同而不同以便于区分
@@ -220,7 +230,7 @@ impl TaskControlBlock {
                     children: Vec::new(),
                     exit_code: 0,
                 })
-            }
+            },
         });
 
         // 将刚刚创建的子任务添加到所对应的父任务的子任务列表中

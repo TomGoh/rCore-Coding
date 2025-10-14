@@ -1,5 +1,8 @@
-use crate::{config::{PAGE_SIZE, PAGE_SIZE_BITS}, mm::page_table::PageTableEntry};
-use core::{fmt::{self, Debug, Formatter}};
+use crate::{
+    config::{PAGE_SIZE, PAGE_SIZE_BITS},
+    mm::page_table::PageTableEntry,
+};
+use core::fmt::{self, Debug, Formatter};
 
 const PA_WIDTH_SV39: usize = 56;
 const VA_WIDTH_SV39: usize = 39;
@@ -126,31 +129,23 @@ impl PhysAddr {
         PhysPageNum((self.0 + PAGE_SIZE - 1) >> PAGE_SIZE_BITS)
     }
 
-    pub fn get_mut<T>(&self) -> &'static mut T{
-        unsafe {
-            (self.0 as *mut T).as_mut().unwrap()
-        }
+    pub fn get_mut<T>(&self) -> &'static mut T {
+        unsafe { (self.0 as *mut T).as_mut().unwrap() }
     }
 }
 
 impl PhysPageNum {
     pub fn get_pte_array(&self) -> &'static mut [PageTableEntry] {
         let pa: PhysAddr = self.clone().into();
-        unsafe {
-            core::slice::from_raw_parts_mut(pa.0 as *mut PageTableEntry, PTE_PER_PAGE)
-        }
+        unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut PageTableEntry, PTE_PER_PAGE) }
     }
     pub fn get_bytes_array(&self) -> &'static mut [u8] {
         let pa: PhysAddr = self.clone().into();
-        unsafe {
-            core::slice::from_raw_parts_mut(pa.0 as *mut u8, PAGE_SIZE)
-        }
+        unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut u8, PAGE_SIZE) }
     }
-    pub fn get_mut<T>(&self) -> & 'static mut T {
+    pub fn get_mut<T>(&self) -> &'static mut T {
         let pa: PhysAddr = self.clone().into();
-        unsafe {
-            &mut *(pa.0 as *mut T).as_mut().unwrap()
-        }
+        unsafe { &mut *(pa.0 as *mut T).as_mut().unwrap() }
     }
 }
 

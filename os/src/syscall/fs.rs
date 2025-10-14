@@ -1,10 +1,10 @@
 //! File and filesystem-related syscalls
 use core::panic;
 
+use crate::mm::page_table::translated_byte_buffer;
 use crate::print;
 use crate::sbi::console_getchar;
 use crate::task::{current_user_token, suspend_current_and_run_next};
-use crate::mm::page_table::translated_byte_buffer;
 const FD_STDOUT: usize = 1;
 const FD_STDIN: usize = 0;
 /// write 的 System Call 实现，本质上是对于 console::print 的封装
@@ -23,7 +23,7 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
     match fd {
         FD_STDOUT => {
             let buffers = translated_byte_buffer(current_user_token(), buf, len);
-             for buffer in buffers {
+            for buffer in buffers {
                 print!("{}", core::str::from_utf8(buffer).unwrap());
             }
             len as isize
@@ -49,7 +49,7 @@ pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
                 }
             }
 
-            let char_read =  c as u8;
+            let char_read = c as u8;
             let mut buffer = translated_byte_buffer(current_user_token(), buf, len);
             unsafe {
                 buffer[0].as_mut_ptr().write_volatile(char_read);

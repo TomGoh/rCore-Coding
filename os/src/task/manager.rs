@@ -1,8 +1,8 @@
+use crate::sync::UPSafeCell;
+use crate::task::task::TaskControlBlock;
 use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Arc;
 use lazy_static::*;
-use crate::sync::UPSafeCell;
-use crate::task::task::TaskControlBlock;
 
 /// 任务管理器，负责维护一个就绪的进程队列，
 /// 该队列具体使用一个 `VecDeque` 双端队列实现，
@@ -13,7 +13,7 @@ pub struct TaskManager {
 
 impl TaskManager {
     /// 创建一个新的任务管理器实例
-    /// 
+    ///
     /// 返回值:
     /// - 返回一个 TaskManager 实例，其中包含一个空的就绪队列
     pub fn new() -> Self {
@@ -23,7 +23,7 @@ impl TaskManager {
     }
 
     /// 将一个任务添加到就绪队列的末尾
-    /// 
+    ///
     /// 参数:
     /// - task: 要添加的任务，类型为 Arc<TaskControlBlock>
     /// 返回值:
@@ -33,7 +33,7 @@ impl TaskManager {
     }
 
     /// 从就绪队列的前端取出一个任务
-    /// 
+    ///
     /// 返回值:
     /// - 如果就绪队列非空，返回 Some(Arc<TaskControlBlock>)，否则返回 None
     /// - 该方法会从就绪队列中移除并返回队列前端的任务
@@ -51,7 +51,7 @@ lazy_static! {
 }
 
 /// 将一个任务添加到全局任务管理器的就绪队列末尾的函数接口
-/// 
+///
 /// 参数:
 /// - task: 要添加的任务，类型为 Arc<TaskControlBlock>
 /// 返回值:
@@ -61,7 +61,7 @@ pub fn add_task(task: Arc<TaskControlBlock>) {
 }
 
 /// 从全局任务管理器的就绪队列前端取出一个任务的函数接口
-/// 
+///
 /// 返回值:
 /// - 如果就绪队列非空，返回 Some(Arc<TaskControlBlock>)，否则返回 None
 /// - 该函数会从就绪队列中移除并返回队列前

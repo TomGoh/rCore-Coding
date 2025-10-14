@@ -1,10 +1,10 @@
 use crate::{mm::memory_set::KERNEL_SPACE, println};
 
-mod heap_allocator;
 pub mod address;
-pub mod page_table;
 mod frame_allocator;
+mod heap_allocator;
 pub mod memory_set;
+pub mod page_table;
 
 pub fn init() {
     heap_allocator::init_heap();

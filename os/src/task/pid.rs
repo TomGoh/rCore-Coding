@@ -1,6 +1,13 @@
+use crate::{
+    config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE},
+    mm::{
+        address::VirtAddr,
+        memory_set::{KERNEL_SPACE, MapPermission},
+    },
+    sync::UPSafeCell,
+};
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
-use crate::{config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE}, mm::{address::VirtAddr, memory_set::{MapPermission, KERNEL_SPACE}}, sync::UPSafeCell};
 
 pub struct PidHandle(pub usize);
 
@@ -17,7 +24,10 @@ pub struct PidAllocator {
 
 impl PidAllocator {
     pub fn new() -> Self {
-        PidAllocator { current: 0, recycled: Vec::new() }
+        PidAllocator {
+            current: 0,
+            recycled: Vec::new(),
+        }
     }
 
     pub fn alloc(&mut self) -> PidHandle {
@@ -31,15 +41,14 @@ impl PidAllocator {
 
     pub fn dealloc(&mut self, pid: usize) {
         assert!(pid < self.current);
-        assert!(self.recycled.iter().find(|ppid| **ppid==pid).is_none());
-       self.recycled.push(pid); 
+        assert!(self.recycled.iter().find(|ppid| **ppid == pid).is_none());
+        self.recycled.push(pid);
     }
 }
 
 lazy_static! {
-    static ref PID_ALLOCATOR: UPSafeCell<PidAllocator> = unsafe {
-        UPSafeCell::new(PidAllocator::new())
-    };
+    static ref PID_ALLOCATOR: UPSafeCell<PidAllocator> =
+        unsafe { UPSafeCell::new(PidAllocator::new()) };
 }
 
 pub fn pid_alloc() -> PidHandle {
@@ -62,17 +71,22 @@ impl KernelStack {
         let (kernel_stack_bottom, kernel_stack_top) = kernel_stack_position(pid);
         KERNEL_SPACE.exclusive_access().insert_framed_area(
             kernel_stack_bottom.into(),
-             kernel_stack_top.into(),
+            kernel_stack_top.into(),
             MapPermission::R | MapPermission::W,
         );
 
         KernelStack { pid }
     }
 
-    pub fn push_on_top<T>(&self, value: T) -> *mut T where T: Sized {
+    pub fn push_on_top<T>(&self, value: T) -> *mut T
+    where
+        T: Sized,
+    {
         let kernel_stack_top = self.get_top();
         let prt_mut = (kernel_stack_top - core::mem::size_of::<T>()) as *mut T;
-        unsafe { *prt_mut = value; }
+        unsafe {
+            *prt_mut = value;
+        }
         prt_mut
     }
 
@@ -86,6 +100,8 @@ impl Drop for KernelStack {
     fn drop(&mut self) {
         let (kernel_stack_bottom, _) = kernel_stack_position(self.pid);
         let bottom_va: VirtAddr = kernel_stack_bottom.into();
-        KERNEL_SPACE.exclusive_access().remove_area_with_start_vpn(bottom_va.into());
+        KERNEL_SPACE
+            .exclusive_access()
+            .remove_area_with_start_vpn(bottom_va.into());
     }
 }

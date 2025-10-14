@@ -1,7 +1,7 @@
 //! Loading user applications into memory
 
-use lazy_static::lazy_static;
 use alloc::vec::Vec;
+use lazy_static::lazy_static;
 
 use crate::println;
 
@@ -61,7 +61,9 @@ lazy_static! {
 
 pub fn get_app_data_by_name(name: &str) -> Option<&'static [u8]> {
     let num_app = get_num_app();
-    (0..num_app).find(|&index| APP_NAMES[index] == name).map(|index| get_app_data(index))
+    (0..num_app)
+        .find(|&index| APP_NAMES[index] == name)
+        .map(|index| get_app_data(index))
 }
 
 pub fn list_apps() {

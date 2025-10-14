@@ -1,9 +1,17 @@
-use alloc::{collections::btree_map::BTreeMap, vec::Vec, sync::Arc};
-use log::debug;
-use lazy_static::lazy_static;
-use riscv::register::satp;
+use crate::{
+    config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE},
+    mm::{
+        address::{PhysAddr, PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum},
+        frame_allocator::{FrameTracker, frame_alloc},
+        page_table::{PTEFlags, PageTable, PageTableEntry},
+    },
+    sync::UPSafeCell,
+};
+use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use core::arch::asm;
-use crate::{config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE}, mm::{address::{PhysAddr, PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum}, frame_allocator::{frame_alloc, FrameTracker}, page_table::{PTEFlags, PageTable, PageTableEntry}}, sync::UPSafeCell};
+use lazy_static::lazy_static;
+use log::debug;
+use riscv::register::satp;
 
 // 定义了一些外部符号，这些符号通常是在链接阶段由链接器脚本定义的，
 // 用于标识内核映像中的特定段的起始和结束地址
@@ -65,16 +73,21 @@ pub struct MapArea {
 impl MapArea {
     /// 创建一个新的逻辑段，主要是通过传入的起始和结束虚拟地址来确定逻辑段所包含的虚拟页号范围,
     /// 同时还需要指定映射类型和权限
-    /// 
+    ///
     /// 参数：
     /// - `start_va`： 逻辑段的起始虚拟地址
     /// - `end_va`： 逻辑段的结束虚拟地址
     /// - `map_type`： 逻辑段的映射类型，可以是 `Identical` 或 `Framed`
     /// - `map_permission`： 逻辑段的权限，可以是读、写、执行和用户权限的组合
-    /// 
+    ///
     /// 返回值：
     /// - `Self`： 返回一个新的 `MapArea` 实例，表示创建的逻辑段
-    pub fn new(start_va: VirtAddr, end_va: VirtAddr, map_type: MapType, map_permission: MapPermission) ->Self{
+    pub fn new(
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        map_type: MapType,
+        map_permission: MapPermission,
+    ) -> Self {
         let start_vpn = start_va.floor();
         let end_vpn = end_va.ceil();
 
@@ -93,7 +106,7 @@ impl MapArea {
     ///    如果是 `Identical` 类型，则直接将虚拟页号转换为物理页号
     /// 2. 根据映射权限创建页表项标志
     /// 3. 调用页表的 `map` 方法完成从虚拟页号到物理页框的映射
-    /// 
+    ///
     /// 参数：
     /// - `page_table`： 页表，用于完成映射操作
     /// - `vpn`：需要被映射的虚拟页号
@@ -119,7 +132,7 @@ impl MapArea {
     ///    如果是 `Framed` 类型，则需要从 `data_frames` 中移除对应的物理页框；
     ///    如果是 `Identical` 类型，则不需要额外进行任何操作
     /// 2. 调用页表的 `unmap` 方法完成取消映射操作
-    /// 
+    ///
     /// 参数：
     /// - `page_table`： 页表，用于完成取消映射操作
     /// - `vpn`： 需要被取消映射的虚拟页号
@@ -136,7 +149,7 @@ impl MapArea {
     /// 将整个逻辑段映射到页表中，
     /// 具体的实现是遍历逻辑段所包含的所有虚拟页号，
     /// 并调用 `map_one` 方法将每个虚拟页号映射到页表中
-    /// 
+    ///
     /// 参数：
     /// - `page_table`： 页表，用于完成映射操作
     pub fn map(&mut self, page_table: &mut PageTable) {
@@ -148,7 +161,7 @@ impl MapArea {
     /// 将整个逻辑段从页表中取消映射，
     /// 具体的实现是遍历逻辑段所包含的所有虚拟页号，
     /// 并调用 `unmap_one` 方法将每个虚拟页号取消映射
-    /// 
+    ///
     /// 参数：
     /// - `page_table`： 页表，用于完成取消映射操作
     #[allow(unused)]
@@ -163,7 +176,7 @@ impl MapArea {
     /// 切片 data 中的数据大小不超过当前逻辑段的总大小，
     /// 且切片中的数据会被对齐到逻辑段的开头，
     /// 然后根据当前逻辑段中的虚拟页号范围及其映射关系，使用迭代器的 `step` 方法逐页拷贝到实际的物理页帧。
-    /// 
+    ///
     /// 参数：
     /// - `page_table`： 页表，用于完成映射操作
     /// - `data`： 需要被拷贝的数据数组切片
@@ -174,8 +187,12 @@ impl MapArea {
         let data_len = data.len();
 
         loop {
-            let src = &data[start..data_len.min(start+PAGE_SIZE)];
-            let dest = &mut page_table.translate(current_vpn).unwrap().ppn().get_bytes_array()[..src.len()];
+            let src = &data[start..data_len.min(start + PAGE_SIZE)];
+            let dest = &mut page_table
+                .translate(current_vpn)
+                .unwrap()
+                .ppn()
+                .get_bytes_array()[..src.len()];
             dest.copy_from_slice(src);
             start += PAGE_SIZE;
             if start > data_len {
@@ -225,7 +242,7 @@ pub struct MemorySet {
 impl MemorySet {
     /// 创建一个新的空内存集，
     /// 该内存集包含一个新的页表和一个空的逻辑段列表
-    /// 
+    ///
     /// 返回值：
     /// - `Self`： 返回一个新的 `MemorySet` 实例，表示创建的内存集
     pub fn new_bare() -> Self {
@@ -240,10 +257,10 @@ impl MemorySet {
     /// 并利用 `MemorySet::push` 方法重新创建对应的物理内存映射
     /// 并添加到新的内存集中，
     /// 最后在完成物理映射的创建后将参数内存集的数据复制到新的内存集中并返回
-    /// 
+    ///
     /// 参数：
     /// - `userspace`： 已存在的用户态内存集
-    /// 
+    ///
     /// 返回值：
     /// - `Self`： 返回一个新的 `MemorySet` 实例，表示创建的内存集
     pub fn from_existing_user(userspace: &MemorySet) -> Self {
@@ -257,14 +274,16 @@ impl MemorySet {
             for vpn in area.vpn_range {
                 let src_ppn = userspace.translate(vpn).unwrap().ppn();
                 let dest_ppn = memory_set.translate(vpn).unwrap().ppn();
-                dest_ppn.get_bytes_array().copy_from_slice(src_ppn.get_bytes_array());
+                dest_ppn
+                    .get_bytes_array()
+                    .copy_from_slice(src_ppn.get_bytes_array());
             }
         }
         memory_set
     }
 
     /// 获取当前MemorySet对应的页表的页号
-    /// 
+    ///
     /// 返回值:
     /// - `usize`：返回当前MemorySet对应的页表的页号
     pub fn token(&self) -> usize {
@@ -275,7 +294,7 @@ impl MemorySet {
     /// 该方法会调用 `MapArea.map` 方法将传入的逻辑段映射到内存集的页表 `page_table` 中，
     /// 调用 `MapArea.copy_data` 方法复制数据（如果有的话）到映射的物理内存中，
     /// 并将其添加到逻辑段列表 `areas` 中
-    /// 
+    ///
     /// 参数：
     /// - `map_area`： 需要添加的逻辑段
     /// - `data`： 逻辑段对应的初始数据
@@ -290,32 +309,35 @@ impl MemorySet {
     /// 为内存集添加一个新的 `Framed` 类型的逻辑段，
     /// 该方法会调用 `push` 方法将传入的起始和结束虚拟地址、
     /// 映射类型 `Framed` 和权限创建一个新的逻辑段并添加到内存集中
-    /// 
+    ///
     /// 参数：
     /// - `start_va`： 逻辑段的起始虚拟地址
     /// - `end_va`： 逻辑段的结束虚拟地址
     /// - `permission`： 逻辑段的权限，可以是读、写、执行和用户权限的组合
-    pub fn insert_framed_area(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission){
-        self.push(MapArea::new(
-            start_va,
-            end_va,
-            MapType::Framed,
-            permission,
-        ), None);
+    pub fn insert_framed_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+    ) {
+        self.push(
+            MapArea::new(start_va, end_va, MapType::Framed, permission),
+            None,
+        );
     }
 
     /// 映射 Trampoline 逻辑段，
     /// 该逻辑段用于在用户态和内核态之间切换，主要存储 Trampoline 代码和 TrapContext 结构体
     /// 具体的实现是调用 `page_table.map` 方法将 Trampoline 的虚拟地址映射到实际的物理地址，
     /// 并设置相应的权限为可读和可执行
-    /// 
+    ///
     /// 返回值：
     /// - `()`： 无返回值
     pub fn map_trampoline(&mut self) {
         self.page_table.map(
             VirtAddr::from(TRAMPOLINE).into(),
             PhysAddr::from(strampoline as usize).into(),
-            PTEFlags::R | PTEFlags::X
+            PTEFlags::R | PTEFlags::X,
         );
     }
 
@@ -327,20 +349,22 @@ impl MemorySet {
     /// 参数：
     /// - `start_vpn`： 需要被移除的逻辑段的起始虚拟页号
     pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
-        if let Some((index, area)) = self.areas.iter_mut().enumerate().find(
-            |(_, area)| {
-                area.vpn_range.get_start() == start_vpn
-            }) {
-                area.unmap(&mut self.page_table);
-                self.areas.remove(index);
-            }
+        if let Some((index, area)) = self
+            .areas
+            .iter_mut()
+            .enumerate()
+            .find(|(_, area)| area.vpn_range.get_start() == start_vpn)
+        {
+            area.unmap(&mut self.page_table);
+            self.areas.remove(index);
+        }
     }
 
     /// 创建一个新的内核内存集，
     /// 该内存集包含内核代码段、只读数据段、数据段、BSS 段和物理内存映射段，
     /// 分别使用 `MemorySet.push` 方法将这些逻辑段添加到内存集中，映射的类型为 `Identical`，
     /// 权限根据不同的逻辑段进行设置
-    /// 
+    ///
     /// 返回值：
     /// - `Self`： 返回一个新的 `MemorySet` 实例，表示创建的内核内存集
     pub fn new_kernel() -> Self {
@@ -349,58 +373,82 @@ impl MemorySet {
         debug!(".text [{:#x}, {:#x})", stext as usize, etext as usize);
         debug!(".rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
         debug!(".data [{:#x}, {:#x})", sdata as usize, edata as usize);
-        debug!(".bss [{:#x}, {:#x})", sbss_with_stack as usize, ebss as usize);
-        debug!("physical memory [{:#x}, {:#x})", ekernel as usize, MEMORY_END);
+        debug!(
+            ".bss [{:#x}, {:#x})",
+            sbss_with_stack as usize, ebss as usize
+        );
+        debug!(
+            "physical memory [{:#x}, {:#x})",
+            ekernel as usize, MEMORY_END
+        );
         debug!("ekernel address: {:#x}", ekernel as usize);
 
         debug!("mapping .text section");
-        memory_set.push(MapArea::new(
-            (stext as usize).into(),
-            (etext as usize).into(),
-            MapType::Identical,
-            MapPermission::R | MapPermission::X
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                (stext as usize).into(),
+                (etext as usize).into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::X,
+            ),
+            None,
+        );
 
         debug!("mapping .rodata section");
-        memory_set.push(MapArea::new(
-            (srodata as usize).into(),
-            (erodata as usize).into(),
-            MapType::Identical,
-            MapPermission::R,
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                (srodata as usize).into(),
+                (erodata as usize).into(),
+                MapType::Identical,
+                MapPermission::R,
+            ),
+            None,
+        );
 
         debug!("mapping .data section");
-        memory_set.push(MapArea::new(
-            (sdata as usize).into(),
-            (edata as usize).into(),
-            MapType::Identical,
-            MapPermission::R | MapPermission::W,
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                (sdata as usize).into(),
+                (edata as usize).into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
 
         debug!("mapping .bss section");
-        memory_set.push(MapArea::new(
-            (sbss_with_stack as usize).into(),
-            (ebss as usize).into(),
-            MapType::Identical,
-            MapPermission::R | MapPermission::W,
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                (sbss_with_stack as usize).into(),
+                (ebss as usize).into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
 
         debug!("mapping physical memory");
-        memory_set.push(MapArea::new(
-            (ekernel as usize).into(),
-            MEMORY_END.into(),
-            MapType::Identical,
-            MapPermission::R | MapPermission::W,
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                (ekernel as usize).into(),
+                MEMORY_END.into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
 
         debug!("mapping memory-mapped registers");
         for pair in MMIO {
-            memory_set.push(MapArea::new(
-                (*pair).0.into(),
-                ((*pair).0 + (*pair).1).into(),
-                MapType::Identical,
-                MapPermission::R | MapPermission::W,
-            ), None);
+            memory_set.push(
+                MapArea::new(
+                    (*pair).0.into(),
+                    ((*pair).0 + (*pair).1).into(),
+                    MapType::Identical,
+                    MapPermission::R | MapPermission::W,
+                ),
+                None,
+            );
         }
 
         memory_set
@@ -508,18 +556,13 @@ impl MemorySet {
                 }
 
                 // 创建逻辑段，使用 Framed 映射类型
-                let map_area = MapArea::new(
-                    start_va,
-                    end_va,
-                    MapType::Framed,
-                    map_permission
-                );
+                let map_area = MapArea::new(start_va, end_va, MapType::Framed, map_permission);
                 // 更新最大结束虚拟页号
                 max_end_vpn = map_area.vpn_range.get_end();
                 // 将段添加到内存集中，并复制 ELF 文件中的数据
                 memory_set.push(
                     map_area,
-                    Some(&elf.input[ph.offset() as usize..(ph.offset()+ph.file_size()) as usize])
+                    Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
                 );
             }
         }
@@ -532,32 +575,45 @@ impl MemorySet {
         let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
 
         // 映射用户栈，权限为 U+R+W
-        memory_set.push(MapArea::new(
-            user_stack_bottom.into(),
-            user_stack_top.into(),
-            MapType::Framed,
-            MapPermission::R | MapPermission::W | MapPermission::U
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                user_stack_bottom.into(),
+                user_stack_top.into(),
+                MapType::Framed,
+                MapPermission::R | MapPermission::W | MapPermission::U,
+            ),
+            None,
+        );
 
         // 在用户栈顶创建一个零长度的映射，用于 sbrk 系统调用的堆空间管理
         // 这个映射标记了堆的起始位置，后续可以通过 sbrk 扩展堆空间
-        memory_set.push(MapArea::new(
-            user_stack_top.into(),
-            user_stack_top.into(),
-            MapType::Framed,
-            MapPermission::R | MapPermission::W | MapPermission::U,
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                user_stack_top.into(),
+                user_stack_top.into(),
+                MapType::Framed,
+                MapPermission::R | MapPermission::W | MapPermission::U,
+            ),
+            None,
+        );
 
         // 映射 TrapContext，用于在 Trap 发生时保存用户态的上下文信息
-        memory_set.push(MapArea::new(
-            TRAP_CONTEXT.into(),
-            TRAMPOLINE.into(),
-            MapType::Framed,
-            MapPermission::R | MapPermission::W
-        ), None);
+        memory_set.push(
+            MapArea::new(
+                TRAP_CONTEXT.into(),
+                TRAMPOLINE.into(),
+                MapType::Framed,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
 
         // 返回内存集、用户栈顶地址和应用程序入口点地址
-        (memory_set, user_stack_top, elf.header.pt2.entry_point() as usize)
+        (
+            memory_set,
+            user_stack_top,
+            elf.header.pt2.entry_point() as usize,
+        )
     }
 
     pub fn activate(&self) {
@@ -572,7 +628,7 @@ impl MemorySet {
         self.page_table.translate(vpn)
     }
 
-        #[allow(unused)]
+    #[allow(unused)]
     pub fn shrink_to(&mut self, start: VirtAddr, new_end: VirtAddr) -> bool {
         if let Some(area) = self
             .areas
@@ -606,9 +662,8 @@ impl MemorySet {
 }
 
 lazy_static! {
-    pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> = Arc::new(unsafe {
-        UPSafeCell::new(MemorySet::new_kernel()
-    )});
+    pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> =
+        Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
 }
 
 #[allow(dead_code)]
@@ -618,15 +673,27 @@ pub fn remap_test() {
     let mid_rodata: VirtAddr = ((srodata as usize + erodata as usize) / 2).into();
     let mid_data: VirtAddr = ((sdata as usize + edata as usize) / 2).into();
     assert_eq!(
-        kernel_space.page_table.translate(mid_text.floor()).unwrap().writable(),
+        kernel_space
+            .page_table
+            .translate(mid_text.floor())
+            .unwrap()
+            .writable(),
         false
     );
     assert_eq!(
-        kernel_space.page_table.translate(mid_rodata.floor()).unwrap().writable(),
+        kernel_space
+            .page_table
+            .translate(mid_rodata.floor())
+            .unwrap()
+            .writable(),
         false,
     );
     assert_eq!(
-        kernel_space.page_table.translate(mid_data.floor()).unwrap().executable(),
+        kernel_space
+            .page_table
+            .translate(mid_data.floor())
+            .unwrap()
+            .executable(),
         false,
     );
     debug!("remap_test passed!");

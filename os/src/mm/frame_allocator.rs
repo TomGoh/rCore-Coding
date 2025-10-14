@@ -1,7 +1,7 @@
-use core::fmt::{self, Formatter, Debug};
+use core::fmt::{self, Debug, Formatter};
 
 use crate::config::MEMORY_END;
-use crate::mm::address::{PhysPageNum, PhysAddr};
+use crate::mm::address::{PhysAddr, PhysPageNum};
 use crate::sync::UPSafeCell;
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
@@ -15,7 +15,7 @@ trait FrameAllocator {
 
 pub struct StackFrameAllocator {
     current: PhysPageNum, // 空闲内存的起始物理页号
-    end: PhysPageNum, // 空闲内存的结束物理页号
+    end: PhysPageNum,     // 空闲内存的结束物理页号
     recycled: Vec<PhysPageNum>,
 }
 
@@ -45,7 +45,6 @@ impl Drop for FrameTracker {
     }
 }
 
-
 type FrameAllocatorImpl = StackFrameAllocator;
 lazy_static! {
     pub static ref FRAME_ALLOCATOR: UPSafeCell<FrameAllocatorImpl> =
@@ -65,7 +64,7 @@ impl FrameAllocator for StackFrameAllocator {
         if let Some(ppn) = self.recycled.pop() {
             Some(ppn)
         } else {
-            if self.current == self.end{
+            if self.current == self.end {
                 None
             } else {
                 let ppn = self.current;
@@ -112,7 +111,6 @@ pub fn frame_alloc() -> Option<FrameTracker> {
 pub fn frame_dealloc(ppn: PhysPageNum) {
     FRAME_ALLOCATOR.exclusive_access().dealloc(ppn);
 }
-
 
 #[allow(dead_code)]
 pub fn frame_allocator_test() {

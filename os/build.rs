@@ -84,9 +84,12 @@ _num_app:
     // 生成应用程序名称表
     // 为每个应用程序生成一个字符串，便于在内核中识别
     // 例如：.string "hello_world", .string "foo", ...
-    writeln!(f, r#"
+    writeln!(
+        f,
+        r#"
     .global _app_names
-    _app_names:"#)?;
+    _app_names:"#
+    )?;
     for app in apps.iter() {
         writeln!(f, r#"    .string "{}""#, app)?;
     }

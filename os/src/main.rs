@@ -13,34 +13,30 @@ mod board;
 
 #[macro_use]
 mod lang_items;
-mod console;
-mod sbi;
-mod logging;
 mod config;
+mod console;
 mod loader;
+mod logging;
+mod mm;
+mod sbi;
 mod sync;
-mod trap;
 mod syscall;
 mod task;
 mod timer;
-mod mm;
+mod trap;
 
-use core::{arch::global_asm};
-use log::{trace, debug, info};
+use core::arch::global_asm;
+use log::{debug, info, trace};
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
 
-pub fn clear_bss()  {
+pub fn clear_bss() {
     unsafe extern "C" {
         safe fn sbss();
         safe fn ebss();
     }
 
-    (sbss as usize..ebss as usize).for_each(|a| 
-        unsafe { 
-            (a as *mut u8).write_volatile(0)
-        }
-    );
+    (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
 /// the rust entry-point of os

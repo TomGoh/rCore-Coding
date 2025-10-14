@@ -4,8 +4,11 @@ use log::{debug, info};
 
 use crate::loader::get_app_data_by_name;
 use crate::mm::page_table::{translated_refmut, translated_str};
+use crate::task::{
+    add_task, current_task, current_user_token, exit_current_and_run_next,
+    suspend_current_and_run_next,
+};
 use crate::timer::get_time_ms;
-use crate::task::{add_task, current_task, current_user_token, exit_current_and_run_next, suspend_current_and_run_next};
 
 /// exit 的 System Call 实现
 /// 参数:
@@ -72,8 +75,12 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     let task = current_task().unwrap();
     let mut inner = task.inner_exclusive_access();
 
-    if inner.children.iter().find(|p| { pid == -1 || pid as usize == p.getpid()})
-    .is_none() {
+    if inner
+        .children
+        .iter()
+        .find(|p| pid == -1 || pid as usize == p.getpid())
+        .is_none()
+    {
         return -1;
     }
 

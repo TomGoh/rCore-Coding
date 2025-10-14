@@ -45,7 +45,7 @@ impl TaskContext {
         Self {
             ra: trap_return as usize,
             sp: kernel_stack_ptr,
-            s: [0;12],
+            s: [0; 12],
         }
     }
 }

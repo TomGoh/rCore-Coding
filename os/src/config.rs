@@ -15,10 +15,10 @@ pub use crate::board::{CLOCK_FREQ, MEMORY_END, MMIO};
 
 /// 计算给定的程序对应的内核栈的位置范围，返回 (bottom, top)，
 /// 主要是通过 TRAMPOLINE 和 KERNEL_STACK_SIZE 计算得到
-/// 
+///
 /// 参数：
 /// - `app_id`: App 的 ID，范围是 0 到 MAX_APP_NUM - 1
-/// 
+///
 /// 返回值：
 /// - `(usize, usize)`: 内核栈的底部和顶部地址
 pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {

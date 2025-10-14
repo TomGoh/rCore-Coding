@@ -1,18 +1,15 @@
-use alloc::sync::Arc;
+use crate::sync::UPSafeCell;
+use crate::task::context::TaskContext;
 use crate::task::manager::fetch_task;
 use crate::task::switch::__switch;
 use crate::task::task::TaskControlBlock;
-use crate::task::context::TaskContext;
-use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use alloc::sync::Arc;
 use lazy_static::*;
 
 lazy_static! {
-    pub static ref PROCESSOR: UPSafeCell<Processor> = unsafe {
-        UPSafeCell::new(Processor::new())
-    };
+    pub static ref PROCESSOR: UPSafeCell<Processor> = unsafe { UPSafeCell::new(Processor::new()) };
 }
-
 
 pub struct Processor {
     current: Option<Arc<TaskControlBlock>>,
@@ -49,11 +46,17 @@ pub fn current_task() -> Option<Arc<TaskControlBlock>> {
 }
 
 pub fn current_user_token() -> usize {
-    current_task().unwrap().inner_exclusive_access().get_user_token()
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .get_user_token()
 }
 
 pub fn current_trap_cx() -> &'static mut TrapContext {
-    current_task().unwrap().inner_exclusive_access().get_trap_cx()
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .get_trap_cx()
 }
 
 pub fn run_tasks() {
@@ -79,10 +82,10 @@ pub fn run_tasks() {
 }
 
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
-    let mut processor  = PROCESSOR.exclusive_access();
+    let mut processor = PROCESSOR.exclusive_access();
     let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
     drop(processor);
-    
+
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }

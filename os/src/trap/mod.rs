@@ -1,11 +1,25 @@
 mod context;
 
-use riscv::register::{
-    mtvec::TrapMode, scause::{self, Exception, Interrupt, Trap}, sie, stval, stvec
+use core::{
+    arch::{asm, global_asm},
+    panic,
 };
-use core::{arch::{global_asm, asm}, panic};
+use riscv::register::{
+    mtvec::TrapMode,
+    scause::{self, Exception, Interrupt, Trap},
+    sie, stval, stvec,
+};
 
-use crate::{config::{TRAMPOLINE, TRAP_CONTEXT}, println, syscall::syscall, task::{current_trap_cx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next}, timer::set_next_trigger};
+use crate::{
+    config::{TRAMPOLINE, TRAP_CONTEXT},
+    println,
+    syscall::syscall,
+    task::{
+        current_trap_cx, current_user_token, exit_current_and_run_next,
+        suspend_current_and_run_next,
+    },
+    timer::set_next_trigger,
+};
 
 // 汇编代码文件，定义了陷入处理程序的入口
 global_asm!(include_str!("trap.S"));
@@ -98,19 +112,29 @@ pub fn trap_handler() -> ! {
             let result = syscall(cx.x[17], [cx.x[10], cx.x[11], cx.x[12]]) as usize;
             cx = current_trap_cx();
             cx.x[10] = result;
-        },
-        Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) |
-        Trap::Exception(Exception::InstructionFault) | Trap::Exception(Exception::InstructionPageFault) |
-        Trap::Exception(Exception::LoadFault) | Trap::Exception(Exception::LoadPageFault) => {
-            println!("[kernel] Page fault in application, bad addr = {:#x}, sepc = {:#x}", stval, current_trap_cx().sepc);
+        }
+        Trap::Exception(Exception::StoreFault)
+        | Trap::Exception(Exception::StorePageFault)
+        | Trap::Exception(Exception::InstructionFault)
+        | Trap::Exception(Exception::InstructionPageFault)
+        | Trap::Exception(Exception::LoadFault)
+        | Trap::Exception(Exception::LoadPageFault) => {
+            println!(
+                "[kernel] Page fault in application, bad addr = {:#x}, sepc = {:#x}",
+                stval,
+                current_trap_cx().sepc
+            );
             println!("[kernel] Killing application...");
             exit_current_and_run_next(-2);
-        },
+        }
         Trap::Exception(Exception::IllegalInstruction) => {
-            println!("[kernel] Illegal instruction in application, sepc = {:#x}", current_trap_cx().sepc);
+            println!(
+                "[kernel] Illegal instruction in application, sepc = {:#x}",
+                current_trap_cx().sepc
+            );
             println!("[kernel] Killing application...");
             exit_current_and_run_next(-3);
-        },
+        }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
             suspend_current_and_run_next();
@@ -123,7 +147,7 @@ pub fn trap_handler() -> ! {
                 current_trap_cx().sepc,
                 current_trap_cx().sstatus.bits()
             );
-        },
+        }
     }
     trap_return();
 }

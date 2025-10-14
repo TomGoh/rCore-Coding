@@ -1,14 +1,14 @@
 use crate::loader::get_app_data_by_name;
 use crate::task::task::TaskControlBlock;
-use lazy_static::*;
 use alloc::sync::Arc;
+use lazy_static::*;
 
 mod context;
+mod manager;
+mod pid;
+mod processor;
 mod switch;
 mod task;
-mod pid;
-mod manager;
-mod processor;
 
 pub use context::TaskContext;
 pub use manager::add_task;
@@ -19,9 +19,9 @@ pub use processor::{
 };
 
 lazy_static! {
-    pub static ref INITPROC: Arc<TaskControlBlock> = Arc::new(
-        TaskControlBlock::new(get_app_data_by_name("initproc").unwrap())
-    );
+    pub static ref INITPROC: Arc<TaskControlBlock> = Arc::new(TaskControlBlock::new(
+        get_app_data_by_name("initproc").unwrap()
+    ));
 }
 
 pub fn add_initproc() {
@@ -29,7 +29,7 @@ pub fn add_initproc() {
 }
 
 /// 挂起当前任务并运行下一个任务
-/// 
+///
 /// 主要是通过：
 /// - 获取当前任务并将其状态设置为就绪
 /// - 获取当前任务的上下文指针
@@ -50,7 +50,7 @@ pub fn suspend_current_and_run_next() {
 }
 
 /// 退出当前的任务进程，回收资源，处置子任务进程，调度其他就绪任务进程
-/// 
+///
 /// 参数：
 /// - exit_code： 当前任务进程执行后的返回退出值，设定在当前任务的 TCB 中
 pub fn exit_current_and_run_next(exit_code: i32) {
