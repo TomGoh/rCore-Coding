@@ -67,6 +67,7 @@ impl TaskControlBlockInner {
     ///
     /// 返回值:
     /// - `TaskStatus`：返回任务的当前状态
+    #[allow(dead_code)]
     pub fn get_status(&self) -> TaskStatus {
         self.task_status
     }

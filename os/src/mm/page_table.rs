@@ -82,8 +82,8 @@ impl PageTable {
         let mut curr_table_root_ppn = self.root_pfn;
         let mut ans: Option<&mut PageTableEntry> = None;
 
-        for i in 0..3 {
-            let curr_pte = &mut curr_table_root_ppn.get_pte_array()[indecies[i]];
+        for (i, &index) in indecies.iter().enumerate() {
+            let curr_pte = &mut curr_table_root_ppn.get_pte_array()[index];
             if i == 2 {
                 ans = Some(curr_pte);
                 break;
@@ -104,8 +104,8 @@ impl PageTable {
         let mut curr_table_root_ppn = self.root_pfn;
         let mut ans: Option<&mut PageTableEntry> = None;
 
-        for i in 0..3 {
-            let curr_pte = &mut curr_table_root_ppn.get_pte_array()[indecies[i]];
+        for (i, &index) in indecies.iter().enumerate() {
+            let curr_pte = &mut curr_table_root_ppn.get_pte_array()[index];
             if i == 2 {
                 ans = Some(curr_pte);
                 break;
@@ -121,16 +121,16 @@ impl PageTable {
 
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
         let pte = self.find_pte_create(vpn).unwrap();
-        assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
+        assert!(!pte.is_valid(), "vpn {vpn:?} is mapped before mapping");
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V);
     }
 
     pub fn unmap(&mut self, vpn: VirtPageNum) {
         if let Some(pte) = self.find_pte(vpn) {
-            assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
+            assert!(pte.is_valid(), "vpn {vpn:?} is invalid before unmapping");
             *pte = PageTableEntry::empty();
         } else {
-            panic!("vpn {:?} is invalid before unmapping", vpn);
+            panic!("vpn {vpn:?} is invalid before unmapping");
         }
     }
 
@@ -146,7 +146,7 @@ impl PageTable {
     }
 
     pub fn translate_va(&self, va: VirtAddr) -> Option<PhysAddr> {
-        self.find_pte(va.clone().floor()).map(|pte| {
+        self.find_pte(va.floor()).map(|pte| {
             //println!("translate_va:va = {:?}", va);
             let aligned_pa: PhysAddr = pte.ppn().into();
             //println!("translate_va:pa_align = {:?}", aligned_pa);

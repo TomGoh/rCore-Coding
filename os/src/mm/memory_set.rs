@@ -31,9 +31,9 @@ unsafe extern "C" {
 /// 映射类型，表示逻辑段的映射方式
 /// 在 rCore 中定义并实现了两种映射类型：
 /// - `Identical`： 该类型表示虚拟地址与物理地址相同，
-///    即虚拟地址空间中的某个地址直接映射到物理地址空间中的相同地址
+///   即虚拟地址空间中的某个地址直接映射到物理地址空间中的相同地址
 /// - `Framed`： 该类型表示虚拟地址与物理地址不同，
-///    即虚拟地址空间中的某个地址映射到物理地址空间中的某个页框
+///   即虚拟地址空间中的某个地址映射到物理地址空间中的某个页框
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MapType {
     Identical,
@@ -59,7 +59,7 @@ bitflags! {
 /// 逻辑段，代表一段连续地址的物理内存，
 /// 具有四个成员变量：
 /// - `vpn_range`： `VPNRange`，表示该逻辑段所包含的虚拟页号范围，
-///    从 l 到 r（不包括 r），可以通过迭代器访问每个虚拟页号
+///   从 l 到 r（不包括 r），可以通过迭代器访问每个虚拟页号
 /// - `data_frames`： `BTreeMap<VirtPageNum, FrameTracker>`，表示该逻辑段中所有地址从虚拟页号到物理页框的映射
 /// - `map_type`： `MapType`，表示该逻辑段的映射类型，可以是 `Identical` 或 `Framed`
 /// - `map_permission`： `MapPermission`，表示该逻辑段的权限，可以是读、写、执行和用户权限的组合
@@ -137,11 +137,8 @@ impl MapArea {
     /// - `page_table`： 页表，用于完成取消映射操作
     /// - `vpn`： 需要被取消映射的虚拟页号
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
-        match self.map_type {
-            MapType::Framed => {
-                self.data_frames.remove(&vpn);
-            }
-            _ => {}
+        if self.map_type == MapType::Framed {
+            self.data_frames.remove(&vpn);
         }
         page_table.unmap(vpn);
     }
@@ -233,7 +230,7 @@ impl MapArea {
 /// - `page_table`： `PageTable`，表示该内存集所使用的页表，
 ///   用于管理虚拟地址到物理地址的映射关系
 /// - `areas`： `Vec<MapArea>`，表示该内存集中包含的所有逻辑段，
-///  每个逻辑段都包含一段连续地址的物理内存
+///   每个逻辑段都包含一段连续地址的物理内存
 pub struct MemorySet {
     page_table: PageTable,
     areas: Vec<MapArea>,
@@ -442,8 +439,8 @@ impl MemorySet {
         for pair in MMIO {
             memory_set.push(
                 MapArea::new(
-                    (*pair).0.into(),
-                    ((*pair).0 + (*pair).1).into(),
+                    pair.0.into(),
+                    (pair.0 + pair.1).into(),
                     MapType::Identical,
                     MapPermission::R | MapPermission::W,
                 ),
@@ -672,29 +669,26 @@ pub fn remap_test() {
     let mid_text: VirtAddr = ((stext as usize + etext as usize) / 2).into();
     let mid_rodata: VirtAddr = ((srodata as usize + erodata as usize) / 2).into();
     let mid_data: VirtAddr = ((sdata as usize + edata as usize) / 2).into();
-    assert_eq!(
-        kernel_space
+    assert!(
+        !kernel_space
             .page_table
             .translate(mid_text.floor())
             .unwrap()
-            .writable(),
-        false
+            .writable()
     );
-    assert_eq!(
-        kernel_space
+    assert!(
+        !kernel_space
             .page_table
             .translate(mid_rodata.floor())
             .unwrap()
             .writable(),
-        false,
     );
-    assert_eq!(
-        kernel_space
+    assert!(
+        !kernel_space
             .page_table
             .translate(mid_data.floor())
             .unwrap()
             .executable(),
-        false,
     );
     debug!("remap_test passed!");
 }

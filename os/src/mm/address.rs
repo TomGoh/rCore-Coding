@@ -24,7 +24,6 @@ pub struct PhysPageNum(pub usize);
 pub struct VirtPageNum(pub usize);
 
 /// Debugging
-
 impl Debug for VirtAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("VA:{:#x}", self.0))
@@ -136,15 +135,15 @@ impl PhysAddr {
 
 impl PhysPageNum {
     pub fn get_pte_array(&self) -> &'static mut [PageTableEntry] {
-        let pa: PhysAddr = self.clone().into();
+        let pa: PhysAddr = (*self).into();
         unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut PageTableEntry, PTE_PER_PAGE) }
     }
     pub fn get_bytes_array(&self) -> &'static mut [u8] {
-        let pa: PhysAddr = self.clone().into();
+        let pa: PhysAddr = (*self).into();
         unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut u8, PAGE_SIZE) }
     }
     pub fn get_mut<T>(&self) -> &'static mut T {
-        let pa: PhysAddr = self.clone().into();
+        let pa: PhysAddr = (*self).into();
         unsafe { &mut *(pa.0 as *mut T).as_mut().unwrap() }
     }
 }
@@ -205,7 +204,7 @@ where
     T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
 {
     pub fn new(start: T, end: T) -> Self {
-        assert!(start <= end, "start {:?} > end {:?}!", start, end);
+        assert!(start <= end, "start {start:?} > end {end:?}!");
         Self { l: start, r: end }
     }
     pub fn get_start(&self) -> T {

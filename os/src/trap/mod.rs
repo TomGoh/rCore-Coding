@@ -43,7 +43,7 @@ fn set_kernel_trap_entry() {
 
 fn set_user_trap_entry() {
     unsafe {
-        stvec::write(TRAMPOLINE as usize, TrapMode::Direct);
+        stvec::write(TRAMPOLINE, TrapMode::Direct);
     }
 }
 
@@ -90,10 +90,13 @@ pub fn trap_from_kernel() -> ! {
 /// - 如果是存储错误或存储页面错误，则打印错误信息并杀死当前应用程序
 /// - 如果是非法指令异常，则打印错误信息并杀死当前应用程序
 /// - 对于其他未处理的异常，函数会 panic
+///
 /// 参数:
 /// - cx: 当前的 TrapContext，上下文信息
+///
 /// 返回值:
 /// - 返回修改后的 TrapContext，用于返回用户态
+///
 /// 注意:
 /// - 该函数假设传入的 TrapContext 是有效的
 /// - 该函数会修改 TrapContext 中的 sepc 和 x[0] 寄存器

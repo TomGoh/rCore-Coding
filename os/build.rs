@@ -10,7 +10,7 @@ fn main() {
     // 告诉 Cargo，当用户程序源代码目录发生变化时重新运行构建脚本
     println!("cargo:rerun-if-changed=../user/src/");
     // 告诉 Cargo，当用户程序编译目标目录发生变化时重新运行构建脚本
-    println!("cargo:rerun-if-changed={}", TARGET_PATH);
+    println!("cargo:rerun-if-changed={TARGET_PATH}");
     // 执行应用程序数据插入操作，如果失败则 panic
     insert_app_data().unwrap();
 }
@@ -45,7 +45,6 @@ fn insert_app_data() -> Result<()> {
     // 这些名称将用于生成对应的符号和包含二进制文件
     let mut apps: Vec<_> = read_dir("../user/src/bin")
         .unwrap() // 如果目录不存在则 panic
-        .into_iter()
         .map(|dir_entry| {
             // 获取文件名并转换为字符串
             let mut name_with_ext = dir_entry.unwrap().file_name().into_string().unwrap();
@@ -76,7 +75,7 @@ _num_app:
     // 为每个应用程序生成一个起始地址符号引用
     // 例如：.quad app_0_start, .quad app_1_start, ...
     for i in 0..apps.len() {
-        writeln!(f, r#"    .quad app_{}_start"#, i)?;
+        writeln!(f, r#"    .quad app_{i}_start"#)?;
     }
     // 添加最后一个应用程序的结束地址，用于确定整个应用程序区域的边界
     writeln!(f, r#"    .quad app_{}_end"#, apps.len() - 1)?;
@@ -91,14 +90,14 @@ _num_app:
     _app_names:"#
     )?;
     for app in apps.iter() {
-        writeln!(f, r#"    .string "{}""#, app)?;
+        writeln!(f, r#"    .string "{app}""#)?;
     }
 
     // 第四步：为每个应用程序生成二进制数据段
     // 遍历所有应用程序，为每个应用生成对应的汇编代码段
     for (idx, app) in apps.iter().enumerate() {
         // 在构建时输出应用程序信息，便于调试和确认
-        println!("app_{}: {}", idx, app);
+        println!("app_{idx}: {app}");
 
         // 为每个应用程序生成独立的数据段
         // 包含起始标签、二进制数据包含指令、结束标签
@@ -106,13 +105,12 @@ _num_app:
             f,
             r#"
     .section .data
-    .global app_{0}_start
-    .global app_{0}_end
+    .global app_{idx}_start
+    .global app_{idx}_end
     .align 3
-app_{0}_start:
-    .incbin "{2}{1}"
-app_{0}_end:"#,
-            idx, app, TARGET_PATH
+app_{idx}_start:
+    .incbin "{TARGET_PATH}{app}"
+app_{idx}_end:"#
         )?;
         // 参数解释：
         // {0} = idx: 应用程序索引号

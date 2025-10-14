@@ -21,8 +21,10 @@ pub struct TrapContext {
 
 impl TrapContext {
     /// 设置用户栈指针，将 x2 寄存器设置为指定的 sp 值
+    ///
     /// 参数:
     /// - sp: 用户栈顶地址
+    ///
     /// 注意:
     /// - 该函数仅修改 x2 寄存器的值
     /// - 该函数不会检查 sp 的有效性
@@ -31,14 +33,17 @@ impl TrapContext {
     }
 
     /// 创建一个新的 TrapContext，用于初始化用户态程序的上下文
+    ///
     /// 参数:
     /// - entry: 用户态程序的入口地址
     /// - sp: 用户态程序的栈顶地址
     /// - kernel_satp: 内核地址空间的 token
     /// - kernel_sp: 内核栈的栈顶地址
     /// - trap_handler: 内核态的 Trap 处理函数的入口地址
+    ///
     /// 返回值:
     /// - 返回一个初始化好的 TrapContext 实例
+    ///
     /// 注意:
     /// - 该函数会将 sstatus 寄存器的 SPP 位设置为 User，表示下次从内核态返回时进入用户态
     /// - sepc 寄存器会被设置为 entry，表示用户态程序从该地址开始执行

@@ -8,11 +8,15 @@ BINS := $(patsubst $(APP_DIR)/%.rs, $(TARGET_DIR)/%.bin, $(APPS))
 
 OBJDUMP := rust-objdump --arch-name=riscv64
 OBJCOPY := rust-objcopy --binary-architecture=riscv64
-CP := cp 
+CP := cp
 
-TEST ?= 
+TEST ?=
 
-elf: $(APPS)
+clippy:
+	@echo "Running clippy checks..."
+	@cargo clippy --target $(TARGET) -- -D warnings
+
+elf: clippy $(APPS)
 	@cargo build --release
 ifeq ($(TEST), 1)
 	@$(CP) $(TARGET_DIR)/usertests $(TARGET_DIR)/initproc
@@ -26,4 +30,4 @@ build: binary
 clean:
 	@cargo clean
 
-.PHONY: elf binary build clean
+.PHONY: elf binary build clean clippy

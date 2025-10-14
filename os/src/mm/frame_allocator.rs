@@ -63,14 +63,12 @@ impl FrameAllocator for StackFrameAllocator {
     fn alloc(&mut self) -> Option<PhysPageNum> {
         if let Some(ppn) = self.recycled.pop() {
             Some(ppn)
+        } else if self.current == self.end {
+            None
         } else {
-            if self.current == self.end {
-                None
-            } else {
-                let ppn = self.current;
-                self.current.0 += 1;
-                Some(ppn)
-            }
+            let ppn = self.current;
+            self.current.0 += 1;
+            Some(ppn)
         }
     }
 
@@ -117,7 +115,7 @@ pub fn frame_allocator_test() {
     let mut v: Vec<FrameTracker> = Vec::new();
     for _ in 0..5 {
         let frame = frame_alloc().unwrap();
-        info!("{:?}", frame);
+        info!("{frame:?}");
         v.push(frame);
     }
 
@@ -125,7 +123,7 @@ pub fn frame_allocator_test() {
 
     for _ in 0..5 {
         let frame = frame_alloc().unwrap();
-        info!("{:?}", frame);
+        info!("{frame:?}");
         v.push(frame);
     }
 

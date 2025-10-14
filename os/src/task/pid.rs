@@ -41,7 +41,7 @@ impl PidAllocator {
 
     pub fn dealloc(&mut self, pid: usize) {
         assert!(pid < self.current);
-        assert!(self.recycled.iter().find(|ppid| **ppid == pid).is_none());
+        assert!(!self.recycled.contains(&pid));
         self.recycled.push(pid);
     }
 }
@@ -55,6 +55,14 @@ pub fn pid_alloc() -> PidHandle {
     PID_ALLOCATOR.exclusive_access().alloc()
 }
 
+/// 计算给定的程序对应的内核栈的位置范围，返回 (bottom, top)，
+/// 主要是通过 TRAMPOLINE 和 KERNEL_STACK_SIZE 计算得到
+///
+/// 参数：
+/// - `app_id`: App 的 ID，范围是 0 到 MAX_APP_NUM - 1
+///
+/// 返回值：
+/// - `(usize, usize)`: 内核栈的底部和顶部地址
 pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
     let top = TRAMPOLINE - app_id * (KERNEL_STACK_SIZE + PAGE_SIZE);
     let bottom = top - KERNEL_STACK_SIZE;
@@ -78,6 +86,7 @@ impl KernelStack {
         KernelStack { pid }
     }
 
+    #[allow(dead_code)]
     pub fn push_on_top<T>(&self, value: T) -> *mut T
     where
         T: Sized,

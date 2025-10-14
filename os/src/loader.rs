@@ -45,7 +45,7 @@ lazy_static! {
             // 每个字符串以 '\0' 结尾，因此通过查找 '\0' 来确定字符串的结束位置
             for _ in 0..num_app {
                 let mut end = start;
-                while end.read_volatile() != '\0' as u8 {
+                while end.read_volatile() != b'\0' {
                     end = end.add(1);
                 }
                 let slice = core::slice::from_raw_parts(start, end as usize - start as usize);

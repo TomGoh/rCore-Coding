@@ -25,7 +25,7 @@ OBJCOPY := rust-objcopy --binary-architecture=riscv64
 # Disassembly
 DISASM ?= -x
 
-build: env $(KERNEL_BIN)
+build: env clippy $(KERNEL_BIN)
 
 env:
 	(rustup target list | grep "riscv64gc-unknown-none-elf (installed)") || rustup target add $(TARGET)
@@ -36,6 +36,10 @@ env:
 
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
+
+clippy:
+	@echo "Running clippy checks..."
+	@cargo clippy --target $(TARGET) -- -D warnings
 
 kernel:
 	@cd ../user && make build
@@ -81,4 +85,4 @@ gdbserver: qemu-version-check build
 gdbclient:
 	@riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
 
-.PHONY: build env kernel clean disasm disasm-vim run-inner gdbserver gdbclient qemu-version-check
+.PHONY: build env kernel clean disasm disasm-vim run-inner gdbserver gdbclient qemu-version-check clippy
