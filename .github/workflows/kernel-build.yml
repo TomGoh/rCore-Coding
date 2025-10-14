@@ -5,12 +5,62 @@ on:
     branches: [ "**" ]
   pull_request:
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt,clippy,rust-src,llvm-tools-preview
+          targets: riscv64gc-unknown-none-elf
+
+      - name: Cache cargo directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            os/target
+            user/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install cargo-binutils
+        run: |
+          if ! command -v cargo-objdump >/dev/null 2>&1; then
+            cargo install cargo-binutils
+          else
+            echo "cargo-binutils already present"
+          fi
+
+      - name: Check formatting (os)
+        working-directory: os
+        run: cargo fmt --all --check
+
+      - name: Check formatting (user)
+        working-directory: user
+        run: cargo fmt --all --check
+
+      - name: Clippy lint (os)
+        working-directory: os
+        run: cargo clippy --all-targets --target riscv64gc-unknown-none-elf -- -D warnings
+
+      - name: Clippy lint (user)
+        working-directory: user
+        run: cargo clippy --all-targets --target riscv64gc-unknown-none-elf -- -D warnings
+
   build:
     runs-on: ubuntu-latest
+    needs: lint
+    env:
+      CARGO_TERM_COLOR: always
 
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +84,59 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install cargo-binutils
-        run: cargo install cargo-binutils
+        run: |
+          if ! command -v cargo-objdump >/dev/null 2>&1; then
+            cargo install cargo-binutils
+          else
+            echo "cargo-binutils already present"
+          fi
 
       - name: Build kernel and apps
         working-directory: os
         run: make build
+
+  qemu:
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src,llvm-tools-preview
+          targets: riscv64gc-unknown-none-elf
+
+      - name: Cache cargo directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            os/target
+            user/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install cargo-binutils
+        run: |
+          if ! command -v cargo-objdump >/dev/null 2>&1; then
+            cargo install cargo-binutils
+          else
+            echo "cargo-binutils already present"
+          fi
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-misc
+
+      - name: Build and run in QEMU
+        working-directory: os
+        run: |
+          make build
+          timeout 60s make run
