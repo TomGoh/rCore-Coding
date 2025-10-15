@@ -6,6 +6,11 @@ mod heap_allocator;
 pub mod memory_set;
 pub mod page_table;
 
+#[cfg(feature = "test-mode")]
+pub use frame_allocator::frame_allocator_test;
+#[cfg(feature = "test-mode")]
+pub use memory_set::remap_test;
+
 pub fn init() {
     heap_allocator::init_heap();
     frame_allocator::init_frame_allocator();

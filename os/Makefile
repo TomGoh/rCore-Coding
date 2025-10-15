@@ -38,6 +38,9 @@ env:
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
+$(KERNEL_BIN)-test: kernel-test
+	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $(KERNEL_BIN)
+
 clippy:
 	@echo "Running clippy checks..."
 	@cargo clippy --target $(TARGET) -- -D warnings
@@ -47,6 +50,13 @@ kernel:
 	@echo Platform: $(BOARD)
 	@cp src/linker-$(BOARD).ld src/linker.ld
 	@cargo build $(MODE_ARG)
+	@rm src/linker.ld
+
+kernel-test:
+	@cd ../user && make build
+	@echo Platform: $(BOARD)
+	@cp src/linker-$(BOARD).ld src/linker.ld
+	@cargo build $(MODE_ARG) --features test-mode
 	@rm src/linker.ld
 
 clean:
@@ -61,6 +71,11 @@ disasm-vim: kernel
 	@rm $(DISASM_TMP)
 
 run: run-inner
+
+run-test: qemu-version-check build-test
+	@qemu-system-riscv64 $(QEMU_ARGS)
+
+build-test: env clippy $(KERNEL_BIN)-test
 
 QEMU_ARGS := -machine virt \
 			 -nographic \
@@ -86,4 +101,4 @@ gdbserver: qemu-version-check build
 gdbclient:
 	@riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
 
-.PHONY: build env kernel clean disasm disasm-vim run-inner gdbserver gdbclient qemu-version-check clippy
+.PHONY: build env kernel kernel-test clean disasm disasm-vim run-inner run-test build-test gdbserver gdbclient qemu-version-check clippy

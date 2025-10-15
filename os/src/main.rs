@@ -76,11 +76,25 @@ pub extern "C" fn rust_main() -> ! {
     info!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
 
     mm::init();
-    task::add_initproc();
-    trap::init();
-    trap::enable_timer_interrupt();
-    timer::set_next_trigger();
-    loader::list_apps();
-    task::run_tasks();
-    panic!("Unreachable in rust_main!");
+
+    #[cfg(feature = "test-mode")]
+    {
+        info!("[kernel] Running in test mode");
+        mm::heap_test();
+        mm::frame_allocator_test();
+        mm::remap_test();
+        info!("[kernel] All tests passed!");
+        sbi::shutdown(false);
+    }
+
+    #[cfg(not(feature = "test-mode"))]
+    {
+        task::add_initproc();
+        trap::init();
+        trap::enable_timer_interrupt();
+        timer::set_next_trigger();
+        loader::list_apps();
+        task::run_tasks();
+        panic!("Unreachable in rust_main!");
+    }
 }
