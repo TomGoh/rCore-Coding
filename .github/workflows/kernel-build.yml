@@ -29,7 +29,9 @@ jobs:
             ~/.cargo/git
             os/target
             user/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock') }}
+            easy-fs/target
+            easy-fs-fuse/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock', 'easy-fs/Cargo.lock', 'easy-fs-fuse/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install cargo-binutils
@@ -48,6 +50,14 @@ jobs:
         working-directory: user
         run: cargo fmt --all --check
 
+      - name: Check formatting (easy-fs)
+        working-directory: easy-fs
+        run: cargo fmt --all --check
+
+      - name: Check formatting (easy-fs-fuse)
+        working-directory: easy-fs-fuse
+        run: cargo fmt --all --check
+
       - name: Clippy lint (os)
         working-directory: os
         run: cargo clippy --target riscv64gc-unknown-none-elf -- -D warnings
@@ -55,6 +65,14 @@ jobs:
       - name: Clippy lint (user)
         working-directory: user
         run: cargo clippy --target riscv64gc-unknown-none-elf -- -D warnings
+
+      - name: Clippy lint (easy-fs)
+        working-directory: easy-fs
+        run: cargo clippy -- -D warnings
+
+      - name: Clippy lint (easy-fs-fuse)
+        working-directory: easy-fs-fuse
+        run: cargo clippy -- -D warnings
 
   build:
     runs-on: ubuntu-latest
@@ -80,7 +98,9 @@ jobs:
             ~/.cargo/git
             os/target
             user/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock') }}
+            easy-fs/target
+            easy-fs-fuse/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock', 'easy-fs/Cargo.lock', 'easy-fs-fuse/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install cargo-binutils
@@ -93,7 +113,7 @@ jobs:
 
       - name: Build kernel and apps
         working-directory: os
-        run: make build
+        run: make build ENABLE_FS=0
 
   qemu:
     runs-on: ubuntu-latest
@@ -119,7 +139,9 @@ jobs:
             ~/.cargo/git
             os/target
             user/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock') }}
+            easy-fs/target
+            easy-fs-fuse/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'os/Cargo.lock', 'user/Cargo.lock', 'easy-fs/Cargo.lock', 'easy-fs-fuse/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install cargo-binutils
@@ -138,4 +160,4 @@ jobs:
       - name: Build and run tests in QEMU
         working-directory: os
         run: |
-          timeout 60s make run-test
+          timeout 60s make run-test ENABLE_FS=0
