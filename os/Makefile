@@ -77,6 +77,9 @@ kernel-test:
 
 clean:
 	@cargo clean
+	@cd ../user && make clean
+	@cd ../easy-fs && cargo clean
+	@cd ../easy-fs-fuse && cargo clean
 
 disasm: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less
