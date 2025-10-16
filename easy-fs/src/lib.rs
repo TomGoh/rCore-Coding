@@ -1,5 +1,6 @@
 #![no_std]
 #![allow(missing_docs)]
+#![allow(unused_imports)]
 
 extern crate alloc;
 mod bitmap;
@@ -7,6 +8,7 @@ mod block_cache;
 mod block_dev;
 mod efs;
 mod layout;
+mod vfs;
 
 pub const BLOCK_SZ: usize = 512;
 use bitmap::Bitmap;
@@ -15,4 +17,3 @@ pub use block_dev::BlockDevice;
 pub use efs::EasyFileSystem;
 use layout::*;
 pub use vfs::Inode;
-pub const BLOCK_SZ: usize = 512;

@@ -124,7 +124,7 @@ impl DiskInode {
     }
 
     pub fn _data_blocks(size: u32) -> u32 {
-        (size + BLOCK_SZ as u32 - 1) / BLOCK_SZ as u32
+        size.div_ceil(BLOCK_SZ as u32)
     }
 
     pub fn data_blocks(&self) -> u32 {
@@ -133,7 +133,7 @@ impl DiskInode {
 
     pub fn total_blocks(size: u32) -> u32 {
         let data_blocks = Self::_data_blocks(size) as usize;
-        let mut total = data_blocks as usize;
+        let mut total = data_blocks;
         // indirect1
         if data_blocks > INODE_DIRECT_COUNT {
             total += 1;
@@ -142,8 +142,7 @@ impl DiskInode {
         if data_blocks > INDIRECT1_BOUND {
             total += 1;
             // sub indirect1
-            total +=
-                (data_blocks - INDIRECT1_BOUND + INODE_INDIRECT1_COUNT - 1) / INODE_INDIRECT1_COUNT;
+            total += (data_blocks - INDIRECT1_BOUND).div_ceil(INODE_INDIRECT1_COUNT);
         }
         total as u32
     }
@@ -165,13 +164,12 @@ impl DiskInode {
                 })
         } else {
             let last = inner_id - INDIRECT1_BOUND;
-            let block_id = self.indirect1 as usize;
-            let indirect1_id = get_block_cache(block_id, Arc::clone(block_device))
+            let indirect1 = get_block_cache(self.indirect2 as usize, Arc::clone(block_device))
                 .lock()
                 .read(0, |indirect2: &IndirectBlock| {
                     indirect2[last / INODE_INDIRECT1_COUNT]
                 });
-            get_block_cache(indirect1_id as usize, Arc::clone(block_device))
+            get_block_cache(indirect1 as usize, Arc::clone(block_device))
                 .lock()
                 .read(0, |indirect1: &IndirectBlock| {
                     indirect1[last % INODE_INDIRECT1_COUNT]
@@ -210,7 +208,7 @@ impl DiskInode {
 
         // ========== 阶段 3: 一级间接块 (索引 28-155) ==========
         // 检查是否需要进入一级间接（需要 > 28 块）
-        if total_blocks_count > INODE_INDIRECT1_COUNT as u32 {
+        if total_blocks_count > INODE_DIRECT_COUNT as u32 {
             // 惰性分配：只在恰好从直接块转换到间接块时，才分配 indirect1 块本身
             // 如果文件之前已经有 indirect1，这里不会重复分配
             if current_blocks_count == INODE_DIRECT_COUNT as u32 {
@@ -309,7 +307,7 @@ impl DiskInode {
     /// - 清零 inode 中的所有指针
     /// - 将 size 设置为 0
     /// - 返回块号列表供位图管理器回收
-    fn clear_size(&mut self, block_device: &Arc<dyn BlockDevice>) -> Vec<u32> {
+    pub fn clear_size(&mut self, block_device: &Arc<dyn BlockDevice>) -> Vec<u32> {
         // ========== 初始化 ==========
         // 存储所有需要回收的块号
         let mut v: Vec<u32> = Vec::new();
@@ -538,7 +536,7 @@ impl DiskInode {
     pub fn write_at(
         &mut self,
         offset: usize,
-        buf: &mut [u8],
+        buf: &[u8],
         block_device: &Arc<dyn BlockDevice>,
     ) -> usize {
         // ========== 初始化写入范围 ==========
@@ -615,7 +613,7 @@ impl DirEntry {
         }
     }
 
-    pub fn enw(name: &str, inode_number: u32) -> Self {
+    pub fn new(name: &str, inode_number: u32) -> Self {
         let mut bytes = [0u8; NAME_LENGTH_LIMIT + 1];
         bytes[..name.len()].copy_from_slice(name.as_bytes());
         Self {
