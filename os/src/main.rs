@@ -15,7 +15,8 @@ mod board;
 mod lang_items;
 mod config;
 mod console;
-mod loader;
+mod drivers;
+mod fs;
 mod logging;
 mod mm;
 mod sbi;
@@ -28,7 +29,6 @@ mod trap;
 use core::arch::global_asm;
 use log::{debug, info, trace};
 global_asm!(include_str!("entry.asm"));
-global_asm!(include_str!("link_app.S"));
 
 pub fn clear_bss() {
     unsafe extern "C" {
@@ -79,22 +79,18 @@ pub extern "C" fn rust_main() -> ! {
 
     #[cfg(feature = "test-mode")]
     {
-        info!("[kernel] Running in test mode");
+        info!("[kernel] Running in test mode - kernel tests");
         mm::heap_test();
         mm::frame_allocator_test();
         mm::remap_test();
-        info!("[kernel] All tests passed!");
-        sbi::shutdown(false);
+        info!("[kernel] Kernel tests passed! Starting user tests...");
     }
 
-    #[cfg(not(feature = "test-mode"))]
-    {
-        task::add_initproc();
-        trap::init();
-        trap::enable_timer_interrupt();
-        timer::set_next_trigger();
-        loader::list_apps();
-        task::run_tasks();
-        panic!("Unreachable in rust_main!");
-    }
+    trap::init();
+    trap::enable_timer_interrupt();
+    timer::set_next_trigger();
+    fs::list_apps();
+    task::add_initproc();
+    task::run_tasks();
+    panic!("Unreachable in rust_main!");
 }

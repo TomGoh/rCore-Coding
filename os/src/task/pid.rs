@@ -1,9 +1,6 @@
 use crate::{
     config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE},
-    mm::{
-        address::VirtAddr,
-        memory_set::{KERNEL_SPACE, MapPermission},
-    },
+    mm::{KERNEL_SPACE, MapPermission, VirtAddr},
     sync::UPSafeCell,
 };
 use alloc::vec::Vec;

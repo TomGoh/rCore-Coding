@@ -1,15 +1,24 @@
-use crate::{mm::memory_set::KERNEL_SPACE, println};
-
-pub mod address;
+#![allow(unused)]
+mod address;
 mod frame_allocator;
 mod heap_allocator;
-pub mod memory_set;
-pub mod page_table;
+mod memory_set;
+mod page_table;
 
+use address::VPNRange;
+pub use address::{PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 #[cfg(feature = "test-mode")]
 pub use frame_allocator::frame_allocator_test;
-#[cfg(feature = "test-mode")]
+pub use frame_allocator::{FrameTracker, frame_alloc, frame_dealloc};
 pub use memory_set::remap_test;
+pub use memory_set::{KERNEL_SPACE, MapPermission, MemorySet, kernel_token};
+use page_table::PTEFlags;
+pub use page_table::{
+    PageTable, PageTableEntry, UserBuffer, UserBufferIterator, translated_byte_buffer,
+    translated_ref, translated_refmut, translated_str,
+};
+
+use crate::println;
 
 pub fn init() {
     heap_allocator::init_heap();

@@ -1,11 +1,13 @@
 use crate::config::TRAP_CONTEXT;
-use crate::mm::address::{PhysPageNum, VirtAddr};
-use crate::mm::memory_set::{KERNEL_SPACE, MemorySet};
+use crate::fs::{File, Stdin, Stdout};
+use crate::mm::{KERNEL_SPACE, MemorySet};
+use crate::mm::{PhysPageNum, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::task::context::TaskContext;
 use crate::task::pid::{KernelStack, PidHandle, pid_alloc};
 use crate::trap::{TrapContext, trap_handler};
 use alloc::sync::{Arc, Weak};
+use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefMut;
 
@@ -44,6 +46,8 @@ pub struct TaskControlBlockInner {
     pub children: Vec<Arc<TaskControlBlock>>,
     /// 退出码，仅当状态为 Zombie 时有效
     pub exit_code: i32,
+    /// 文件描述符表
+    pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
 }
 
 impl TaskControlBlockInner {
@@ -78,6 +82,15 @@ impl TaskControlBlockInner {
     /// - `bool`：如果任务处于僵尸状态且没有子进程，返回 true；否则返回 false
     pub fn is_zombie(&self) -> bool {
         self.task_status == TaskStatus::Zombie && self.children.is_empty()
+    }
+
+    pub fn alloc_fd(&mut self) -> usize {
+        if let Some(fd) = (0..self.fd_table.len()).find(|fd| self.fd_table[*fd].is_none()) {
+            fd
+        } else {
+            self.fd_table.push(None);
+            self.fd_table.len() - 1
+        }
     }
 }
 
@@ -125,6 +138,14 @@ impl TaskControlBlock {
                     parent: None,
                     children: Vec::new(),
                     exit_code: 0,
+                    fd_table: vec![
+                        // 0 -> stdin
+                        Some(Arc::new(Stdin)),
+                        // 1 -> stdout
+                        Some(Arc::new(Stdout)),
+                        // 2 -> stderr
+                        Some(Arc::new(Stdout)),
+                    ],
                 })
             },
         };
@@ -230,6 +251,11 @@ impl TaskControlBlock {
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
                     exit_code: 0,
+                    fd_table: parent_inner
+                        .fd_table
+                        .iter()
+                        .map(|fd| fd.as_ref().map(|file| file.clone()))
+                        .collect(),
                 })
             },
         });

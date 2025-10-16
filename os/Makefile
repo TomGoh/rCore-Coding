@@ -27,14 +27,8 @@ OBJCOPY := rust-objcopy --binary-architecture=riscv64
 # Disassembly
 DISASM ?= -x
 
-# Set to 1 to enable filesystem (requires easy-fs-fuse implementation)
-ENABLE_FS ?= 0
-
-ifeq ($(ENABLE_FS), 1)
+# Filesystem is always enabled (like reference implementation)
 build: env clippy $(KERNEL_BIN) fs-img
-else
-build: env clippy $(KERNEL_BIN)
-endif
 
 env:
 	(rustup target list | grep "riscv64gc-unknown-none-elf (installed)") || rustup target add $(TARGET)
@@ -94,17 +88,14 @@ run: run-inner
 run-test: qemu-version-check build-test
 	@qemu-system-riscv64 $(QEMU_ARGS)
 
-build-test: env clippy $(KERNEL_BIN)-test
+build-test: env clippy $(KERNEL_BIN)-test fs-img
 
 QEMU_ARGS := -machine virt \
 			 -nographic \
 			 -bios $(BOOTLOADER) \
-			 -device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
-
-ifeq ($(ENABLE_FS), 1)
-QEMU_ARGS += -drive file=$(FS_IMG),if=none,format=raw,id=x0 \
+			 -device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) \
+			 -drive file=$(FS_IMG),if=none,format=raw,id=x0 \
 			 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
-endif
 
 QEMU_NAME := qemu-system-riscv64
 qemu-version-check:

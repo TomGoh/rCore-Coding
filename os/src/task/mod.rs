@@ -1,4 +1,5 @@
-use crate::loader::get_app_data_by_name;
+use crate::fs::OpenFlags;
+use crate::fs::open_file;
 use crate::task::task::TaskControlBlock;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -20,9 +21,16 @@ pub use processor::{
 };
 
 lazy_static! {
-    pub static ref INITPROC: Arc<TaskControlBlock> = Arc::new(TaskControlBlock::new(
-        get_app_data_by_name("initproc").unwrap()
-    ));
+    pub static ref INITPROC: Arc<TaskControlBlock> = Arc::new({
+        #[cfg(feature = "test-mode")]
+        let init_app_name = "initproc_test";
+        #[cfg(not(feature = "test-mode"))]
+        let init_app_name = "initproc";
+
+        let inode = open_file(init_app_name, OpenFlags::RDONLY).unwrap();
+        let v = inode.read_all();
+        TaskControlBlock::new(v.as_slice())
+    });
 }
 
 pub fn add_initproc() {
@@ -55,7 +63,34 @@ pub fn suspend_current_and_run_next() {
 /// 参数：
 /// - exit_code： 当前任务进程执行后的返回退出值，设定在当前任务的 TCB 中
 pub fn exit_current_and_run_next(exit_code: i32) {
+    use crate::sbi::shutdown;
+    use log::info;
+
     let curr_tcb = current_task().unwrap();
+
+    // Check if current task is INITPROC
+    let is_initproc = Arc::ptr_eq(&curr_tcb, &INITPROC);
+
+    if is_initproc {
+        // INITPROC is exiting - this means all tests are done
+        info!("[kernel] INITPROC exiting with code {exit_code}");
+        #[cfg(feature = "test-mode")]
+        {
+            if exit_code == 0 {
+                info!("[kernel] All tests passed!");
+                shutdown(false);
+            } else {
+                info!("[kernel] Tests failed with code {exit_code}");
+                shutdown(true);
+            }
+        }
+        #[cfg(not(feature = "test-mode"))]
+        {
+            info!("[kernel] System shutting down");
+            shutdown(false);
+        }
+    }
+
     let mut inner = curr_tcb.inner_exclusive_access();
     // 标记该执行完成的进程为 Zombie，在 TCB 中记录退出值
     inner.task_status = task::TaskStatus::Zombie;
