@@ -3,7 +3,7 @@
     .section .data
     .global _num_app
 _num_app:
-    .quad 33
+    .quad 34
     .quad app_0_start
     .quad app_1_start
     .quad app_2_start
@@ -37,7 +37,8 @@ _num_app:
     .quad app_30_start
     .quad app_31_start
     .quad app_32_start
-    .quad app_32_end
+    .quad app_33_start
+    .quad app_33_end
 
     .global _app_names
     _app_names:
@@ -56,6 +57,7 @@ _num_app:
     .string "huge_write"
     .string "infloop"
     .string "initproc"
+    .string "initproc_test"
     .string "matrix"
     .string "pipe_large_test"
     .string "pipetest"
@@ -200,7 +202,7 @@ app_14_end:
     .global app_15_end
     .align 3
 app_15_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/matrix"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/initproc_test"
 app_15_end:
 
     .section .data
@@ -208,7 +210,7 @@ app_15_end:
     .global app_16_end
     .align 3
 app_16_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/pipe_large_test"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/matrix"
 app_16_end:
 
     .section .data
@@ -216,7 +218,7 @@ app_16_end:
     .global app_17_end
     .align 3
 app_17_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/pipetest"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/pipe_large_test"
 app_17_end:
 
     .section .data
@@ -224,7 +226,7 @@ app_17_end:
     .global app_18_end
     .align 3
 app_18_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/priv_csr"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/pipetest"
 app_18_end:
 
     .section .data
@@ -232,7 +234,7 @@ app_18_end:
     .global app_19_end
     .align 3
 app_19_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/priv_inst"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/priv_csr"
 app_19_end:
 
     .section .data
@@ -240,7 +242,7 @@ app_19_end:
     .global app_20_end
     .align 3
 app_20_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/run_pipe_test"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/priv_inst"
 app_20_end:
 
     .section .data
@@ -248,7 +250,7 @@ app_20_end:
     .global app_21_end
     .align 3
 app_21_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sig_simple"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/run_pipe_test"
 app_21_end:
 
     .section .data
@@ -256,7 +258,7 @@ app_21_end:
     .global app_22_end
     .align 3
 app_22_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sig_simple2"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sig_simple"
 app_22_end:
 
     .section .data
@@ -264,7 +266,7 @@ app_22_end:
     .global app_23_end
     .align 3
 app_23_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sig_tests"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sig_simple2"
 app_23_end:
 
     .section .data
@@ -272,7 +274,7 @@ app_23_end:
     .global app_24_end
     .align 3
 app_24_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sleep"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sig_tests"
 app_24_end:
 
     .section .data
@@ -280,7 +282,7 @@ app_24_end:
     .global app_25_end
     .align 3
 app_25_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sleep_simple"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sleep"
 app_25_end:
 
     .section .data
@@ -288,7 +290,7 @@ app_25_end:
     .global app_26_end
     .align 3
 app_26_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/stack_overflow"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sleep_simple"
 app_26_end:
 
     .section .data
@@ -296,7 +298,7 @@ app_26_end:
     .global app_27_end
     .align 3
 app_27_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/store_fault"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/stack_overflow"
 app_27_end:
 
     .section .data
@@ -304,7 +306,7 @@ app_27_end:
     .global app_28_end
     .align 3
 app_28_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/until_timeout"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/store_fault"
 app_28_end:
 
     .section .data
@@ -312,7 +314,7 @@ app_28_end:
     .global app_29_end
     .align 3
 app_29_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/user_shell"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/until_timeout"
 app_29_end:
 
     .section .data
@@ -320,7 +322,7 @@ app_29_end:
     .global app_30_end
     .align 3
 app_30_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/usertests"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/user_shell"
 app_30_end:
 
     .section .data
@@ -328,7 +330,7 @@ app_30_end:
     .global app_31_end
     .align 3
 app_31_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/usertests_simple"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/usertests"
 app_31_end:
 
     .section .data
@@ -336,5 +338,13 @@ app_31_end:
     .global app_32_end
     .align 3
 app_32_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/yield"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/usertests_simple"
 app_32_end:
+
+    .section .data
+    .global app_33_start
+    .global app_33_end
+    .align 3
+app_33_start:
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/yield"
+app_33_end:
