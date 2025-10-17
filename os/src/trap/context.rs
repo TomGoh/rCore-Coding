@@ -2,6 +2,7 @@ use riscv::register::sstatus::{self, Sstatus};
 
 /// 保存陷入内核态时用户态程序运行的上下文
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct TrapContext {
     // 保存 x0 ~ x31 寄存器的数组
     pub x: [usize; 32],

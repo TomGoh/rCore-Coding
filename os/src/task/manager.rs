@@ -1,5 +1,6 @@
 use crate::sync::UPSafeCell;
 use crate::task::task::TaskControlBlock;
+use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -49,6 +50,11 @@ lazy_static! {
     pub static ref TASK_MANAGER: UPSafeCell<TaskManager> = unsafe {
         UPSafeCell::new(TaskManager::new())
     };
+    /// 全局 PID 到任务控制块的映射表，使用 UPSafeCell 包装以确保独占访问，
+    /// 使用 lazy_static 进行延迟初始化
+    pub static ref PID2TCB: UPSafeCell<BTreeMap<usize, Arc<TaskControlBlock>>> =
+        unsafe { UPSafeCell::new(BTreeMap::new()) };
+
 }
 
 /// 将一个任务添加到全局任务管理器的就绪队列末尾的函数接口
@@ -59,6 +65,9 @@ lazy_static! {
 /// 返回值:
 /// - 无返回值
 pub fn add_task(task: Arc<TaskControlBlock>) {
+    PID2TCB
+        .exclusive_access()
+        .insert(task.getpid(), Arc::clone(&task));
     TASK_MANAGER.exclusive_access().add(task);
 }
 
@@ -69,4 +78,14 @@ pub fn add_task(task: Arc<TaskControlBlock>) {
 /// - 该函数会从就绪队列中移除并返回队列前
 pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     TASK_MANAGER.exclusive_access().fetch()
+}
+
+pub fn pid2task(pid: usize) -> Option<Arc<TaskControlBlock>> {
+    let map = PID2TCB.exclusive_access();
+    map.get(&pid).map(Arc::clone)
+}
+
+pub fn remove_from_pid2task(pid: usize) {
+    let mut map = PID2TCB.exclusive_access();
+    map.remove(&pid);
 }

@@ -1,24 +1,32 @@
-use crate::fs::OpenFlags;
-use crate::fs::open_file;
-use crate::task::task::TaskControlBlock;
-use alloc::sync::Arc;
-use lazy_static::*;
-
+#![allow(unused)]
+mod action;
 mod context;
 mod manager;
 mod pid;
 mod processor;
+mod signal;
 mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::fs::{OpenFlags, open_file};
+use crate::println;
+use crate::sbi::shutdown;
+use alloc::sync::Arc;
 pub use context::TaskContext;
-pub use manager::add_task;
-#[allow(unused_imports)]
-pub use pid::{KernelStack, PidAllocator, PidHandle, pid_alloc};
+use lazy_static::*;
+use manager::fetch_task;
+use manager::remove_from_pid2task;
+use switch::__switch;
+use task::{TaskControlBlock, TaskStatus};
+
+pub use action::{SignalAction, SignalActions};
+pub use manager::{add_task, pid2task};
+pub use pid::{KernelStack, PidHandle, pid_alloc};
 pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
 };
+pub use signal::{MAX_SIG, SignalFlags};
 
 lazy_static! {
     pub static ref INITPROC: Arc<TaskControlBlock> = Arc::new({
@@ -67,6 +75,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     use log::info;
 
     let curr_tcb = current_task().unwrap();
+    remove_from_pid2task(curr_tcb.getpid());
 
     // Check if current task is INITPROC
     let is_initproc = Arc::ptr_eq(&curr_tcb, &INITPROC);
@@ -114,4 +123,112 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // 创建空的任务上下文以便切换到下一个就绪的任务进程
     let mut _unused = TaskContext::zero_init();
     schedule(&mut _unused as *mut _);
+}
+
+pub fn current_add_signal(signal: SignalFlags) {
+    if let Some(task) = current_task() {
+        let mut inner = task.inner_exclusive_access();
+        inner.pending_signals |= signal;
+    }
+}
+
+pub fn handle_signals() {
+    loop {
+        check_pending_signals();
+        let (frozen, killed) = {
+            let task = current_task().unwrap();
+            let inner = task.inner_exclusive_access();
+            (inner.frozen, inner.killed)
+        };
+        if !frozen || killed {
+            break;
+        }
+        suspend_current_and_run_next();
+    }
+}
+
+fn check_pending_signals() {
+    for sig in 0..(MAX_SIG + 1) {
+        let task = current_task().unwrap();
+        let inner = task.inner_exclusive_access();
+        let signal = SignalFlags::from_bits(1 << sig).unwrap();
+
+        if inner.pending_signals.contains(signal) && (!inner.signal_mask.contains(signal)) {
+            let mut masked = true;
+            let handling_sig = inner.handling_sig;
+            if handling_sig == -1 {
+                masked = false;
+            } else {
+                let handling_sig = handling_sig as usize;
+                if !inner.signal_actions.table[handling_sig]
+                    .mask
+                    .contains(signal)
+                {
+                    masked = false;
+                }
+            }
+
+            if !masked {
+                drop(inner);
+                drop(task);
+
+                if signal == SignalFlags::SIGKILL
+                    || signal == SignalFlags::SIGSTOP
+                    || signal == SignalFlags::SIGCONT
+                    || signal == SignalFlags::SIGDEF
+                {
+                    call_kernel_signal_handler(signal);
+                } else {
+                    call_user_signal_handler(sig, signal);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn call_kernel_signal_handler(sig: SignalFlags) {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+
+    match sig {
+        SignalFlags::SIGSTOP => {
+            inner.frozen = true;
+            inner.pending_signals ^= SignalFlags::SIGSTOP;
+        }
+        SignalFlags::SIGCONT => {
+            if inner.pending_signals.contains(SignalFlags::SIGCONT) {
+                inner.pending_signals ^= SignalFlags::SIGCONT;
+                inner.frozen = false;
+            }
+        }
+        _ => {
+            inner.killed = true;
+        }
+    }
+}
+
+fn call_user_signal_handler(sig: usize, signal: SignalFlags) {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+
+    let handler = inner.signal_actions.table[sig].handler;
+    if handler != 0 {
+        inner.handling_sig = sig as isize;
+        inner.pending_signals ^= signal;
+
+        let old_trap_cx = inner.get_trap_cx();
+        inner.trap_cx_backup = Some(*old_trap_cx);
+
+        old_trap_cx.sepc = handler;
+        old_trap_cx.x[10] = sig;
+    } else {
+        println!("[K] task/call_user_signal_handler: default action: ignore it or kill process");
+    }
+}
+
+pub fn check_signals_error_of_current() -> Option<(i32, &'static str)> {
+    let task = current_task().unwrap();
+    let inner = task.inner_exclusive_access();
+    inner.pending_signals.check_error()
 }

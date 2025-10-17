@@ -5,6 +5,7 @@ use crate::mm::{PhysPageNum, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::task::context::TaskContext;
 use crate::task::pid::{KernelStack, PidHandle, pid_alloc};
+use crate::task::{SignalActions, SignalFlags};
 use crate::trap::{TrapContext, trap_handler};
 use alloc::string::String;
 use alloc::sync::{Arc, Weak};
@@ -49,6 +50,20 @@ pub struct TaskControlBlockInner {
     pub exit_code: i32,
     /// 文件描述符表
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
+    /// 信号屏蔽字
+    pub signal_mask: SignalFlags,
+    /// 信号处理函数表
+    pub signal_actions: SignalActions,
+    /// 待处理的信号集合
+    pub pending_signals: SignalFlags,
+    /// 任务是否被标记为已终止
+    pub killed: bool,
+    /// 任务是否被标记为已冻结
+    pub frozen: bool,
+    /// 目前正在被处理的信号例程
+    pub handling_sig: isize,
+    /// 执行当前的信号处理例程之前的 TrapContext
+    pub trap_cx_backup: Option<TrapContext>,
 }
 
 impl TaskControlBlockInner {
@@ -147,6 +162,13 @@ impl TaskControlBlock {
                         // 2 -> stderr
                         Some(Arc::new(Stdout)),
                     ],
+                    pending_signals: SignalFlags::empty(),
+                    signal_mask: SignalFlags::empty(),
+                    handling_sig: -1,
+                    signal_actions: SignalActions::default(),
+                    killed: false,
+                    frozen: false,
+                    trap_cx_backup: None,
                 })
             },
         };
@@ -306,6 +328,13 @@ impl TaskControlBlock {
                     children: Vec::new(),
                     exit_code: 0,
                     fd_table: new_fd_table,
+                    pending_signals: SignalFlags::empty(),
+                    signal_mask: parent_inner.signal_mask,
+                    handling_sig: -1,
+                    signal_actions: parent_inner.signal_actions.clone(),
+                    killed: false,
+                    frozen: false,
+                    trap_cx_backup: None,
                 })
             },
         });

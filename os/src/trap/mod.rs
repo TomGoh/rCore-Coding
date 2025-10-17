@@ -15,7 +15,8 @@ use crate::{
     println,
     syscall::syscall,
     task::{
-        current_trap_cx, current_user_token, exit_current_and_run_next,
+        SignalFlags, check_signals_error_of_current, current_add_signal, current_trap_cx,
+        current_user_token, exit_current_and_run_next, handle_signals,
         suspend_current_and_run_next,
     },
     timer::set_next_trigger,
@@ -127,16 +128,14 @@ pub fn trap_handler() -> ! {
                 stval,
                 current_trap_cx().sepc
             );
-            println!("[kernel] Killing application...");
-            exit_current_and_run_next(-2);
+            current_add_signal(SignalFlags::SIGSEGV);
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             println!(
                 "[kernel] Illegal instruction in application, sepc = {:#x}",
                 current_trap_cx().sepc
             );
-            println!("[kernel] Killing application...");
-            exit_current_and_run_next(-3);
+            current_add_signal(SignalFlags::SIGILL);
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
@@ -152,6 +151,14 @@ pub fn trap_handler() -> ! {
             );
         }
     }
+
+    handle_signals();
+
+    if let Some((errno, msg)) = check_signals_error_of_current() {
+        println!("[kernel] {}", msg);
+        exit_current_and_run_next(errno);
+    }
+
     trap_return();
 }
 
