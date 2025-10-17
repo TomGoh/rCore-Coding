@@ -1,7 +1,10 @@
 //! File and filesystem-related syscalls
+use alloc::sync::Arc;
+
 use crate::fs::{OpenFlags, make_pipe, open_file};
 use crate::mm::{UserBuffer, translated_byte_buffer, translated_refmut, translated_str};
 use crate::task::{current_task, current_user_token};
+
 /// write 的 System Call 实现，本质上是对于 console::print 的封装
 /// 目前仅支持向标准输出（fd=1）写入
 ///
@@ -98,4 +101,20 @@ pub fn sys_pipe(pipe: *mut usize) -> isize {
     *translated_refmut(token, pipe) = read_fd;
     *translated_refmut(token, unsafe { pipe.add(1) }) = write_fd;
     0
+}
+
+pub fn sys_dup(fd: usize) -> isize {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    if fd >= inner.fd_table.len() {
+        return -1;
+    }
+
+    if inner.fd_table[fd].is_none() {
+        return -1;
+    }
+
+    let new_fd = inner.alloc_fd();
+    inner.fd_table[new_fd] = Some(Arc::clone(inner.fd_table[fd].as_ref().unwrap()));
+    new_fd as isize
 }

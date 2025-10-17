@@ -1,6 +1,6 @@
 use crate::config::TRAP_CONTEXT;
 use crate::fs::{File, Stdin, Stdout};
-use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
+use crate::mm::{KERNEL_SPACE, MemorySet, translated_refmut};
 use crate::mm::{PhysPageNum, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::task::context::TaskContext;
@@ -204,9 +204,13 @@ impl TaskControlBlock {
         // 然后，创建参数指针数组，并将每个参数字符串写入到用户栈中
         // 同时将每个参数字符串的地址存储在参数指针数组中
         let mut argv: Vec<_> = (0..=args.len())
-        .map(|arg| {
-            translated_refmut(memory_set.token(), (argv_base + arg * core::mem::size_of::<usize>()) as *mut usize)
-        }).collect();
+            .map(|arg| {
+                translated_refmut(
+                    memory_set.token(),
+                    (argv_base + arg * core::mem::size_of::<usize>()) as *mut usize,
+                )
+            })
+            .collect();
 
         // 接着，将每个参数字符串的地址存储在参数指针数组中
         // 并将参数字符串写入到用户栈中
@@ -242,7 +246,7 @@ impl TaskControlBlock {
             trap_handler as usize,
         );
         trap_cx.x[10] = args.len(); // 将 argc 传递给用户程序
-        trap_cx.x[11] = argv_base;  // 将 argv 传递给用户程序
+        trap_cx.x[11] = argv_base; // 将 argv 传递给用户程序
         *inner.get_trap_cx() = trap_cx;
         // 在 exec 中无需对于任务上下文进行额外处理
         // 因为当前任务本身已经在执行了，
