@@ -1,11 +1,12 @@
 use crate::config::TRAP_CONTEXT;
 use crate::fs::{File, Stdin, Stdout};
-use crate::mm::{KERNEL_SPACE, MemorySet};
+use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
 use crate::mm::{PhysPageNum, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::task::context::TaskContext;
 use crate::task::pid::{KernelStack, PidHandle, pid_alloc};
 use crate::trap::{TrapContext, trap_handler};
+use alloc::string::String;
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -178,7 +179,8 @@ impl TaskControlBlock {
     ///
     /// 参数:
     /// - elf_data: ELF 文件的字节切片引用
-    pub fn exec(&self, elf_data: &[u8]) {
+    /// - args: 命令行参数的字符串向量
+    pub fn exec(&self, elf_data: &[u8], args: Vec<String>) {
         // 首先，从 ELF 文件数据中创建新的内存映射，
         // 并获取用户栈顶地址和程序入口点
         // 注意，由于物理内存的 FrameTracker 实现了 Drop trait，
@@ -186,11 +188,44 @@ impl TaskControlBlock {
         // 会自动释放其占用的物理内存
         // 这里不需要手动释放旧的内存映射
         // 只需要创建新的内存映射并替换即可
-        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+        let (memory_set, mut user_sp, entry_point) = MemorySet::from_elf(elf_data);
         let trap_cx_ppn = memory_set
             .translate(VirtAddr::from(TRAP_CONTEXT).into())
             .unwrap()
             .ppn();
+
+        // 接着，需要将命令行参数写入到新的用户栈中
+        // 以便于新程序可以通过栈参数获取命令行参数，也就是分配一个字符串指针数组 argv
+        // 首先，计算参数字符串和指针所需的空间，通过调整用户栈顶地址
+        // 为参数字符串和指针预留空间
+        // 预留的空间大小为所有参数字符串的长度之和加上每个字符串的结尾空字符
+        user_sp -= (args.len() + 1) * core::mem::size_of::<usize>();
+        let argv_base = user_sp;
+        // 然后，创建参数指针数组，并将每个参数字符串写入到用户栈中
+        // 同时将每个参数字符串的地址存储在参数指针数组中
+        let mut argv: Vec<_> = (0..=args.len())
+        .map(|arg| {
+            translated_refmut(memory_set.token(), (argv_base + arg * core::mem::size_of::<usize>()) as *mut usize)
+        }).collect();
+
+        // 接着，将每个参数字符串的地址存储在参数指针数组中
+        // 并将参数字符串写入到用户栈中
+        // 通过逐个参数、逐个字符写入的方式，首先调整用户栈顶地址以为参数字符串预留空间
+        // 然后，将参数字符串的每个字符写入到用户栈中
+        // 实际写入的时候需要使用 translated_refmut 函数
+        // 以确保正确的地址转换和内存访问权限
+        for i in 0..args.len() {
+            user_sp -= args[i].len() + 1;
+            *argv[i] = user_sp;
+            let mut p = user_sp;
+            for c in args[i].as_bytes() {
+                *translated_refmut(memory_set.token(), p as *mut u8) = *c;
+                p += 1;
+            }
+            // 手动添加字符串结尾的空字符 '\0'
+            *translated_refmut(memory_set.token(), p as *mut u8) = 0;
+        }
+        user_sp -= user_sp % core::mem::size_of::<usize>();
 
         // 而后，利用创建的内存映射与陷入上下文信息
         // 更新当前任务控制块内部的内存映射对象和 TrapContext，
@@ -198,14 +233,17 @@ impl TaskControlBlock {
         let mut inner = self.inner_exclusive_access();
         inner.memory_set = memory_set;
         inner.trap_cx_ppn = trap_cx_ppn;
-        let trap_cx = inner.get_trap_cx();
-        *trap_cx = TrapContext::app_init_context(
+        // 使用新的入口点、用户栈顶地址和参数信息重新设置 TrapContext
+        let mut trap_cx = TrapContext::app_init_context(
             entry_point,
             user_sp,
             KERNEL_SPACE.exclusive_access().token(),
             self.kernel_stack.get_top(),
             trap_handler as usize,
         );
+        trap_cx.x[10] = args.len(); // 将 argc 传递给用户程序
+        trap_cx.x[11] = argv_base;  // 将 argv 传递给用户程序
+        *inner.get_trap_cx() = trap_cx;
         // 在 exec 中无需对于任务上下文进行额外处理
         // 因为当前任务本身已经在执行了，
         // 只需要更新内存映射和 TrapContext 即可，
@@ -236,6 +274,18 @@ impl TaskControlBlock {
         let kernel_stack = KernelStack::new(&pid_handle);
         let kernel_stack_top = kernel_stack.get_top();
 
+        // 接下来，复制当前任务的文件描述符表
+        // 这里简单地通过克隆每个文件描述符的引用计数智能指针来实现
+        // 以便于子任务可以共享父任务打开的文件
+        let mut new_fd_table: Vec<Option<Arc<dyn File + Send + Sync>>> = Vec::new();
+        for fd in parent_inner.fd_table.iter() {
+            if let Some(file) = fd {
+                new_fd_table.push(Some(file.clone()));
+            } else {
+                new_fd_table.push(None);
+            }
+        }
+
         // 接着，创建一个新的任务控制块实例 `TaskControlBlock` 作为子任务，
         // 基于前述的初始化工作，同时设置其父任务为当前任务的弱引用，更新其状态为 Ready
         let child_tcb = Arc::new(TaskControlBlock {
@@ -251,11 +301,7 @@ impl TaskControlBlock {
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
                     exit_code: 0,
-                    fd_table: parent_inner
-                        .fd_table
-                        .iter()
-                        .map(|fd| fd.as_ref().map(|file| file.clone()))
-                        .collect(),
+                    fd_table: new_fd_table,
                 })
             },
         });

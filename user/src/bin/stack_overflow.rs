@@ -6,7 +6,7 @@ extern crate user_lib;
 
 #[allow(unconditional_recursion)]
 fn f(depth: usize) {
-    if depth.is_multiple_of(10) {
+    if depth % 10 == 0 {
         println!("depth = {}", depth);
     }
     f(depth + 1);

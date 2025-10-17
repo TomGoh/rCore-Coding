@@ -1,6 +1,6 @@
 //! File and filesystem-related syscalls
-use crate::fs::{OpenFlags, open_file};
-use crate::mm::{UserBuffer, translated_byte_buffer, translated_str};
+use crate::fs::{OpenFlags, make_pipe, open_file};
+use crate::mm::{UserBuffer, translated_byte_buffer, translated_refmut, translated_str};
 use crate::task::{current_task, current_user_token};
 /// write 的 System Call 实现，本质上是对于 console::print 的封装
 /// 目前仅支持向标准输出（fd=1）写入
@@ -82,5 +82,20 @@ pub fn sys_close(fd: usize) -> isize {
         return -1;
     }
     inner.fd_table[fd].take();
+    0
+}
+
+pub fn sys_pipe(pipe: *mut usize) -> isize {
+    let task = current_task().unwrap();
+    let token = current_user_token();
+    let mut inner = task.inner_exclusive_access();
+
+    let (pipe_read_end, pipe_write_end) = make_pipe();
+    let read_fd = inner.alloc_fd();
+    inner.fd_table[read_fd] = Some(pipe_read_end);
+    let write_fd = inner.alloc_fd();
+    inner.fd_table[write_fd] = Some(pipe_write_end);
+    *translated_refmut(token, pipe) = read_fd;
+    *translated_refmut(token, unsafe { pipe.add(1) }) = write_fd;
     0
 }

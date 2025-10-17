@@ -1,9 +1,10 @@
 //! App management syscalls
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use log::{debug, info};
 
 use crate::fs::{OpenFlags, open_file};
-use crate::mm::{translated_refmut, translated_str};
+use crate::mm::{translated_ref, translated_refmut, translated_str};
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next,
     suspend_current_and_run_next,
@@ -61,9 +62,19 @@ pub fn sys_fork() -> isize {
     new_pid as isize
 }
 
-pub fn sys_exec(path: *const u8) -> isize {
+pub fn sys_exec(path: *const u8, mut args: *const usize) -> isize {
     let token = current_user_token();
     let path = translated_str(token, path);
+
+    let mut args_vec = Vec::new();
+    loop {
+        let arg_str_ptr = *translated_ref(token, args);
+        if arg_str_ptr == 0 {
+            break;
+        }
+        args_vec.push(translated_str(token, arg_str_ptr as *const u8));
+        args = unsafe { args.add(1) };
+    }
 
     info!("exec: path = {path}");
 
@@ -72,9 +83,10 @@ pub fn sys_exec(path: *const u8) -> isize {
         let all_data = app_inode.read_all();
         info!("exec: read {} bytes, calling task.exec", all_data.len());
         let task = current_task().unwrap();
-        task.exec(all_data.as_slice());
+        let argc = args_vec.len();
+        task.exec(all_data.as_slice(), args_vec);
         info!("exec: task.exec completed, returning 0");
-        0
+        argc as isize
     } else {
         info!("exec: failed to open file {path}");
         -1
