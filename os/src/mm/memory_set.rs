@@ -594,16 +594,8 @@ impl MemorySet {
             None,
         );
 
-        // 映射 TrapContext，用于在 Trap 发生时保存用户态的上下文信息
-        memory_set.push(
-            MapArea::new(
-                TRAP_CONTEXT.into(),
-                TRAMPOLINE.into(),
-                MapType::Framed,
-                MapPermission::R | MapPermission::W,
-            ),
-            None,
-        );
+        // Note: TrapContext is now allocated per-thread in task/id.rs::TaskUserRes::alloc_user_res()
+        // not here, to support multi-threading where each thread has its own trap context
 
         // 返回内存集、用户栈顶地址和应用程序入口点地址
         (

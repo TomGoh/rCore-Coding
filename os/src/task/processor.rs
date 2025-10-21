@@ -1,6 +1,7 @@
 use crate::sync::UPSafeCell;
 use crate::task::context::TaskContext;
 use crate::task::manager::fetch_task;
+use crate::task::process::ProcessControlBlock;
 use crate::task::switch::__switch;
 use crate::task::task::TaskControlBlock;
 use crate::trap::TrapContext;
@@ -46,10 +47,7 @@ pub fn current_task() -> Option<Arc<TaskControlBlock>> {
 }
 
 pub fn current_user_token() -> usize {
-    current_task()
-        .unwrap()
-        .inner_exclusive_access()
-        .get_user_token()
+    current_task().unwrap().get_user_token()
 }
 
 pub fn current_trap_cx() -> &'static mut TrapContext {
@@ -89,4 +87,22 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+pub fn current_kstack_top() -> usize {
+    current_task().unwrap().kstack.get_top()
+}
+
+pub fn current_process() -> Arc<ProcessControlBlock> {
+    current_task().unwrap().process.upgrade().unwrap()
+}
+
+pub fn current_trap_cx_user_va() -> usize {
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .res
+        .as_ref()
+        .unwrap()
+        .trap_cx_user_va()
 }

@@ -92,6 +92,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ida-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4f6eb32b11ef70edda8c5d7e04221188bb2e6fa6eedb842c265a7e911fdaee6"
+dependencies = [
+ "spin 0.10.0",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -138,6 +147,7 @@ dependencies = [
  "bitflags 2.9.4",
  "buddy_system_allocator",
  "easy-fs",
+ "ida-rs",
  "lazy_static",
  "log",
  "riscv",
@@ -256,6 +266,15 @@ name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "lock_api",
+]
+
+[[package]]
+name = "spin"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
 dependencies = [
  "lock_api",
 ]

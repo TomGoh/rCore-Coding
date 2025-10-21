@@ -11,15 +11,15 @@ use riscv::register::{
 };
 
 use crate::{
-    config::{TRAMPOLINE, TRAP_CONTEXT},
+    config::TRAMPOLINE,
     println,
     syscall::syscall,
     task::{
-        SignalFlags, check_signals_error_of_current, current_add_signal, current_trap_cx,
-        current_user_token, exit_current_and_run_next, handle_signals,
+        SignalFlags, check_signals_of_current, current_add_signal, current_trap_cx,
+        current_trap_cx_user_va, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next,
     },
-    timer::set_next_trigger,
+    timer::{check_timer, set_next_trigger},
 };
 
 // 汇编代码文件，定义了陷入处理程序的入口
@@ -57,7 +57,7 @@ pub fn enable_timer_interrupt() {
 #[unsafe(no_mangle)]
 pub fn trap_return() -> ! {
     set_user_trap_entry();
-    let trap_cx_ptr = TRAP_CONTEXT;
+    let trap_cx_user_va = current_trap_cx_user_va();
     let user_satp = current_user_token();
 
     unsafe extern "C" {
@@ -71,7 +71,7 @@ pub fn trap_return() -> ! {
             "fence.i",
             "jr {restore_va}",
             restore_va = in(reg) restore_va,
-            in("a0") trap_cx_ptr,
+            in("a0") trap_cx_user_va,
             in("a1") user_satp,
             options(noreturn)
         );
@@ -139,6 +139,7 @@ pub fn trap_handler() -> ! {
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
+            check_timer();
             suspend_current_and_run_next();
         }
         _ => {
@@ -152,9 +153,7 @@ pub fn trap_handler() -> ! {
         }
     }
 
-    handle_signals();
-
-    if let Some((errno, msg)) = check_signals_error_of_current() {
+    if let Some((errno, msg)) = check_signals_of_current() {
         println!("[kernel] {}", msg);
         exit_current_and_run_next(errno);
     }
